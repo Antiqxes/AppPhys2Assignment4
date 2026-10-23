@@ -1,0 +1,14 @@
+{
+    "version": 1,
+    "revision": 0,
+    "rules": [
+        {
+            "primary-output": "AppPhys2.386760F1\\x64\\Debug\\main.obj",
+            "outputs": [
+                "AppPhys2.386760F1\\x64\\Debug\\main.cpp.obj.dt.module.json",
+                "AppPhys2.386760F1\\x64\\Debug\\main.cpp.obj.dt.d.json"
+            ],
+            "requires": []
+        }
+    ]
+}
