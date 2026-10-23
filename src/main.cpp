@@ -1,5 +1,6 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include <box2d/box2d.h>
 
 #include <cstdlib>
 #include <exception>
@@ -15,6 +16,8 @@ namespace {
 constexpr int kWindowWidth = 800;
 constexpr int kWindowHeight = 600;
 
+constexpr float kGravity = -9.8f;
+
 }  // namespace
 
 int main() {
@@ -23,6 +26,8 @@ int main() {
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
         gfx::Window window({.width = kWindowWidth, .height = kWindowHeight, .title = "Box2D"});
         gfx::initDraw(kWindowWidth, kWindowHeight);
+
+		b2World world(b2Vec2(0.0f, kGravity));
 
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
