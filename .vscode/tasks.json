@@ -1,0 +1,72 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "Build Main",
+            "dependsOn": "Ensure Box2D Library",
+            "command": "g++",
+            "args": [
+                "-g",
+                "-std=c++20",
+                "-Wall",
+                "-Wextra",
+                "-I${workspaceFolder}/include",
+                "-I${workspaceFolder}/src",
+                "-L${workspaceFolder}/lib",
+                "${workspaceFolder}/src/main.cpp",
+                "${workspaceFolder}/src/draw.cpp",
+                "${workspaceFolder}/src/core/glfw_context.cpp",
+                "${workspaceFolder}/src/core/window.cpp",
+                "${workspaceFolder}/src/core/input.cpp",
+                "${workspaceFolder}/src/glad.c",
+                "-lbox2d",
+                "-lglfw3dll",
+                "-lopengl32",
+                "-lgdi32",
+                "-o",
+                "${workspaceFolder}/main.exe"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "compiler: g++"
+        },
+        {
+            "type": "process",
+            "label": "Ensure Box2D Library",
+            "command": "cmd.exe",
+            "args": [
+                "/c",
+                "if not exist lib\\libbox2d.a call scripts\\build_box2d.bat"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "detail": "builds lib/libbox2d.a only if it is missing"
+        },
+        {
+            "type": "process",
+            "label": "Build Box2D library",
+            "command": "cmd.exe",
+            "args": [
+                "/c",
+                "scripts\\build_box2d.bat"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "group": "build",
+            "detail": "rebuilds lib/libbox2d.a from src/box2d"
+        }
+    ]
+}

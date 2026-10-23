@@ -1,0 +1,6 @@
+build/
+lib/libbox2d.a
+*.exe
+*.o
+.vs/
+.idea/
