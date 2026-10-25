@@ -40,6 +40,8 @@ constexpr int kPositionIterations = 3;
 constexpr float kSpawnCooldown = 0.25f;
 constexpr float kSpawnHalfSize = 0.5f;
 
+constexpr float kRemoveBelowY = -10.0f;
+
 struct Box {
     b2Body* body;
     float halfWidth;
@@ -159,6 +161,15 @@ int main() {
                 accumulator -= kStepDt;
             }
 
+            for (auto it = boxes.begin(); it != boxes.end();) {
+                if (it->body->GetPosition().y < kRemoveBelowY) {
+                    world.DestroyBody(it->body);
+                    it = boxes.erase(it);
+                }
+                else {
+                    ++it;
+                }
+            }
 
             glClear(GL_COLOR_BUFFER_BIT);
 
