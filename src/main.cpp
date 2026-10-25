@@ -17,6 +17,8 @@ namespace {
 constexpr int kWindowWidth = 800;
 constexpr int kWindowHeight = 600;
 
+constexpr float kPixelsPerMeter = 32.0f;
+
 constexpr float kGravity = -9.8f;
 
 constexpr float kGroundX = 12.5f;
@@ -31,6 +33,22 @@ constexpr float kMaxFrameTime = 0.05f;
 
 constexpr int kVelocityIterations = 8;
 constexpr int kPositionIterations = 3;
+
+float metersToPixelsX(float xMeters) {
+    return xMeters * kPixelsPerMeter;
+}
+
+float metersToPixelsY(float yMeters) {
+    return kWindowHeight - yMeters * kPixelsPerMeter;
+}
+
+float pixelsToMetersX(float xPixels) {
+    return xPixels / kPixelsPerMeter;
+}
+
+float pixelsToMetersY(float yPixels) {
+    return (kWindowHeight - yPixels) / kPixelsPerMeter;
+}
 
 }  // namespace
 
@@ -58,7 +76,7 @@ int main() {
 
         b2BodyDef boxDef;
         boxDef.type = b2_dynamicBody;
-        boxDef.position.Set(12.5f, 14.0f);
+        boxDef.position.Set(pixelsToMetersX(400.0f), pixelsToMetersY(100.0f));
         b2Body* box = world.CreateBody(&boxDef);
 
         b2PolygonShape boxShape;
@@ -105,14 +123,15 @@ int main() {
 
             b2Vec2 groundPosition = ground->GetPosition();
 
-            gfx::drawBox(groundPosition.x * 32.0f, kWindowHeight - groundPosition.y * 32.0f,
-                kGroundHalfWidth * 2.0f * 32.0f, kGroundHalfHeight * 2.0f * 32.0f, 0.0f,
-                0.35f, 0.35f, 0.4f);
+            gfx::drawBox(metersToPixelsX(groundPosition.x), metersToPixelsY(groundPosition.y),
+                kGroundHalfWidth * 2.0f * kPixelsPerMeter,
+                kGroundHalfHeight * 2.0f * kPixelsPerMeter, 0.0f, 0.35f, 0.35f, 0.4f);
 
             b2Vec2 boxPosition = box->GetPosition();
-            gfx::drawBox(boxPosition.x * 32.0f, kWindowHeight - boxPosition.y * 32.0f,
-                kBoxHalfSize * 2.0f * 32.0f, kBoxHalfSize * 2.0f * 32.0f, 0.0f, 1.0f,
-                0.5f, 0.2f);
+
+            gfx::drawBox(metersToPixelsX(boxPosition.x), metersToPixelsY(boxPosition.y),
+                kBoxHalfSize * 2.0f * kPixelsPerMeter,
+                kBoxHalfSize * 2.0f * kPixelsPerMeter, 0.0f, 1.0f, 0.5f, 0.2f);
 
 
             window.swapBuffers();
