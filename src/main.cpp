@@ -25,6 +25,9 @@ constexpr float kGroundHalfHeight = 0.5f;
 
 constexpr float kBoxHalfSize = 1.0f;
 
+constexpr int kVelocityIterations = 8;
+constexpr int kPositionIterations = 3;
+
 }  // namespace
 
 int main() {
@@ -67,8 +70,15 @@ int main() {
 
         bool wasMouseDown = false;
 
+        double previousTime = glfwGetTime();
+
         while (!window.shouldClose()) {
             gfx::processInput(window);
+
+            double now = glfwGetTime();
+            float frameTime = static_cast<float>(now - previousTime);
+            previousTime = now;
+
 
             double mouseX = 0.0, mouseY = 0.0;
             window.getCursorPosition(mouseX, mouseY);
@@ -77,6 +87,9 @@ int main() {
                 std::cout << "click at " << mouseX << ", " << mouseY << '\n';
             }
             wasMouseDown = mouseDown;
+
+            world.Step(frameTime, kVelocityIterations, kPositionIterations);
+
 
             glClear(GL_COLOR_BUFFER_BIT);
 
