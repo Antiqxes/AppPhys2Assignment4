@@ -73,7 +73,7 @@ void drawBoxBody(const b2Body* body, float halfWidth, float halfHeight, float r,
         -body->GetAngle(), r, g, b);
 }
 
-Box createBox(b2World& world, float x, float y, float halfWidth, float halfHeight, float friction,
+Box createBox(b2World& world, float x, float y, float halfWidth, float halfHeight,float density, float friction,
     float restitution, float r, float g, float b) {
     b2BodyDef bodyDef;
     bodyDef.type = b2_dynamicBody;
@@ -85,7 +85,7 @@ Box createBox(b2World& world, float x, float y, float halfWidth, float halfHeigh
 
     b2FixtureDef fixtureDef;
     fixtureDef.shape = &shape;
-    fixtureDef.density = 1.0f;
+    fixtureDef.density = density;
     fixtureDef.friction = friction;
     fixtureDef.restitution = restitution;
     body->CreateFixture(&fixtureDef);
@@ -118,11 +118,11 @@ int main() {
         ground->CreateFixture(&groundFixture);
 
         std::vector<Box> boxes;
-        boxes.push_back(createBox(world, 4.0f, 3.0f, 0.5f, 0.5f, 0.9f, 0.0f, 0.9f, 0.3f, 0.3f));
-        boxes.push_back(createBox(world, 7.0f, 3.0f, 1.0f, 0.5f, 0.05f, 0.0f, 0.3f, 0.5f, 0.9f));
+        boxes.push_back(createBox(world, 4.0f, 3.0f, 0.5f, 0.5f, 1.0f, 0.9f, 0.0f, 0.9f, 0.3f, 0.3f));
+        boxes.push_back(createBox(world, 7.0f, 3.0f, 1.0f, 0.5f, 1.0f, 0.05f, 0.0f, 0.3f, 0.5f, 0.9f));
         boxes.push_back(createBox(world, pixelsToMetersX(448.0f), pixelsToMetersY(152.0f), 0.75f,
-            0.75f, 0.5f, 0.8f, 0.3f, 0.8f, 0.4f));
-        boxes.push_back(createBox(world, 18.0f, 10.0f, 0.5f, 1.0f, 0.5f, 0.4f, 0.9f, 0.8f, 0.3f));
+            0.75f, 1.0f, 0.5f, 0.8f, 0.3f, 0.8f, 0.4f));
+        boxes.push_back(createBox(world, 18.0f, 10.0f, 0.5f, 1.0f, 1.0f, 0.5f, 0.4f, 0.9f, 0.8f, 0.3f));
         boxes[0].body->SetLinearVelocity(b2Vec2(kSlideSpeed, 0.0f));
         boxes[1].body->SetLinearVelocity(b2Vec2(kSlideSpeed, 0.0f));
         boxes[3].body->SetTransform(b2Vec2(18.0f, 10.0f), 0.4f);
@@ -150,7 +150,7 @@ int main() {
             if (mouseDown && spawnTimer <= 0.0f) {
                 boxes.push_back(createBox(world, pixelsToMetersX(static_cast<float>(mouseX)),
                     pixelsToMetersY(static_cast<float>(mouseY)),
-                    kSpawnHalfSize, kSpawnHalfSize, 0.5f, 0.3f, 1.0f, 0.5f,
+                    kSpawnHalfSize, kSpawnHalfSize, 4.0f, 0.5f, 0.3f, 1.0f, 0.5f,
                     0.2f));
                 spawnTimer = kSpawnCooldown;
             }
