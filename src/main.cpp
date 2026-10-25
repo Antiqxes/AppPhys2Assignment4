@@ -37,6 +37,9 @@ constexpr float kMaxFrameTime = 0.05f;
 constexpr int kVelocityIterations = 8;
 constexpr int kPositionIterations = 3;
 
+constexpr float kSpawnCooldown = 0.25f;
+constexpr float kSpawnHalfSize = 0.5f;
+
 struct Box {
     b2Body* body;
     float halfWidth;
@@ -124,7 +127,7 @@ int main() {
 
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
-        bool wasMouseDown = false;
+        float spawnTimer = 0.0f;
 
         double previousTime = glfwGetTime();
         float accumulator = 0.0f;
@@ -141,10 +144,14 @@ int main() {
             double mouseX = 0.0, mouseY = 0.0;
             window.getCursorPosition(mouseX, mouseY);
             bool mouseDown = window.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
-            if (mouseDown && !wasMouseDown) {
-                std::cout << "click at " << mouseX << ", " << mouseY << '\n';
+            spawnTimer -= frameTime;
+            if (mouseDown && spawnTimer <= 0.0f) {
+                boxes.push_back(createBox(world, pixelsToMetersX(static_cast<float>(mouseX)),
+                    pixelsToMetersY(static_cast<float>(mouseY)),
+                    kSpawnHalfSize, kSpawnHalfSize, 0.5f, 0.3f, 1.0f, 0.5f,
+                    0.2f));
+                spawnTimer = kSpawnCooldown;
             }
-            wasMouseDown = mouseDown;
 
             accumulator += frameTime;
             while (accumulator >= kStepDt) {
