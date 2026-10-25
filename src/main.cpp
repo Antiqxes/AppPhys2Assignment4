@@ -50,6 +50,14 @@ float pixelsToMetersY(float yPixels) {
     return (kWindowHeight - yPixels) / kPixelsPerMeter;
 }
 
+void drawBoxBody(const b2Body* body, float halfWidth, float halfHeight, float r, float g,
+    float b) {
+    b2Vec2 position = body->GetPosition();
+    gfx::drawBox(metersToPixelsX(position.x), metersToPixelsY(position.y),
+        halfWidth * 2.0f * kPixelsPerMeter, halfHeight * 2.0f * kPixelsPerMeter,
+        -body->GetAngle(), r, g, b);
+}
+
 }  // namespace
 
 int main() {
@@ -121,17 +129,8 @@ int main() {
 
             glClear(GL_COLOR_BUFFER_BIT);
 
-            b2Vec2 groundPosition = ground->GetPosition();
-
-            gfx::drawBox(metersToPixelsX(groundPosition.x), metersToPixelsY(groundPosition.y),
-                kGroundHalfWidth * 2.0f * kPixelsPerMeter,
-                kGroundHalfHeight * 2.0f * kPixelsPerMeter, 0.0f, 0.35f, 0.35f, 0.4f);
-
-            b2Vec2 boxPosition = box->GetPosition();
-
-            gfx::drawBox(metersToPixelsX(boxPosition.x), metersToPixelsY(boxPosition.y),
-                kBoxHalfSize * 2.0f * kPixelsPerMeter,
-                kBoxHalfSize * 2.0f * kPixelsPerMeter, 0.0f, 1.0f, 0.5f, 0.2f);
+            drawBoxBody(ground, kGroundHalfWidth, kGroundHalfHeight, 0.35f, 0.35f, 0.4f);
+            drawBoxBody(box, kBoxHalfSize, kBoxHalfSize, 1.0f, 0.5f, 0.2f);
 
 
             window.swapBuffers();
