@@ -27,8 +27,6 @@ constexpr float kGroundY = 1.0f;
 constexpr float kGroundHalfWidth = 10.0f;
 constexpr float kGroundHalfHeight = 0.5f;
 
-constexpr float kSlideSpeed = 5.0f;
-
 constexpr float kBoxHalfSize = 1.0f;
 
 constexpr float kStepDt = 1.0f / 60.0f;
@@ -118,14 +116,6 @@ int main() {
         ground->CreateFixture(&groundFixture);
 
         std::vector<Box> boxes;
-        boxes.push_back(createBox(world, 4.0f, 3.0f, 0.5f, 0.5f, 1.0f, 0.9f, 0.0f, 0.9f, 0.3f, 0.3f));
-        boxes.push_back(createBox(world, 7.0f, 3.0f, 1.0f, 0.5f, 1.0f, 0.05f, 0.0f, 0.3f, 0.5f, 0.9f));
-        boxes.push_back(createBox(world, pixelsToMetersX(448.0f), pixelsToMetersY(152.0f), 0.75f,
-            0.75f, 1.0f, 0.5f, 0.8f, 0.3f, 0.8f, 0.4f));
-        boxes.push_back(createBox(world, 18.0f, 10.0f, 0.5f, 1.0f, 1.0f, 0.5f, 0.4f, 0.9f, 0.8f, 0.3f));
-        boxes[0].body->SetLinearVelocity(b2Vec2(kSlideSpeed, 0.0f));
-        boxes[1].body->SetLinearVelocity(b2Vec2(kSlideSpeed, 0.0f));
-        boxes[3].body->SetTransform(b2Vec2(18.0f, 10.0f), 0.4f);
 
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
