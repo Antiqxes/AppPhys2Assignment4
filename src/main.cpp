@@ -72,8 +72,9 @@ namespace {
         {"triangle", 3, 1.0f, 0.9f, 0.3f},
         {"pentagon", 5, 0.8f, 0.5f, 1.0f},
         {"hexagon", 6, 0.5f, 1.0f, 0.6f},
+        {"heptagon", 7, 0.8f, 0.8f, 0.8f},
     };
-    constexpr int kShapeCount = 5;
+    constexpr int kShapeCount = 6;
 
     struct Item {
         b2Body* body;
