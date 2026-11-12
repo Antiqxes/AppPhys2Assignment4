@@ -44,10 +44,8 @@ constexpr float kRemoveBelowY = -10.0f;
 constexpr float kLineThickness = 2.0f;
 constexpr float kAxisLength = 0.6f;
 
-struct Box {
+struct Item {
     b2Body* body;
-    float halfWidth;
-    float halfHeight;
     float r, g, b;
 };
 
@@ -92,7 +90,24 @@ void drawAxes(const b2Body* body) {
     drawLine(transform.p, b2Mul(transform, b2Vec2(0.0f, kAxisLength)), 0.3f, 1.0f, 0.3f);
 }
 
-Box createBox(b2World& world, float x, float y, float halfWidth, float halfHeight,float density, float friction,
+void drawItem(const Item& item) {
+    const b2Transform& transform = item.body->GetTransform();
+    for (const b2Fixture* fixture = item.body->GetFixtureList(); fixture;
+        fixture = fixture->GetNext()) {
+        const b2Shape* shape = fixture->GetShape();
+        if (shape->GetType() == b2Shape::e_polygon) {
+            const b2PolygonShape* polygon = static_cast<const b2PolygonShape*>(shape);
+            for (int i = 0; i < polygon->m_count; ++i) {
+                int next = (i + 1) % polygon->m_count;
+                drawLine(b2Mul(transform, polygon->m_vertices[i]),
+                    b2Mul(transform, polygon->m_vertices[next]), item.r, item.g, item.b);
+            }
+        }
+    }
+    drawAxes(item.body);
+}
+
+Item createBox(b2World& world, float x, float y, float halfWidth, float halfHeight, float friction,
     float restitution, float r, float g, float b) {
     b2BodyDef bodyDef;
     bodyDef.type = b2_dynamicBody;
@@ -104,12 +119,12 @@ Box createBox(b2World& world, float x, float y, float halfWidth, float halfHeigh
 
     b2FixtureDef fixtureDef;
     fixtureDef.shape = &shape;
-    fixtureDef.density = density;
+    fixtureDef.density = 1.0f;
     fixtureDef.friction = friction;
     fixtureDef.restitution = restitution;
     body->CreateFixture(&fixtureDef);
 
-    return { body, halfWidth, halfHeight, r, g, b };
+    return { body, r, g, b };
 }
 
 }  // namespace
@@ -136,7 +151,7 @@ int main() {
         groundFixture.friction = 0.6f;
         ground->CreateFixture(&groundFixture);
 
-        std::vector<Box> boxes;
+        std::vector<Item>items;
 
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
@@ -159,9 +174,9 @@ int main() {
             bool mouseDown = window.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
             spawnTimer -= frameTime;
             if (mouseDown && spawnTimer <= 0.0f) {
-                boxes.push_back(createBox(world, pixelsToMetersX(static_cast<float>(mouseX)),
+                items.push_back(createBox(world, pixelsToMetersX(static_cast<float>(mouseX)),
                     pixelsToMetersY(static_cast<float>(mouseY)),
-                    kSpawnHalfSize, kSpawnHalfSize, 4.0f, 0.5f, 0.3f, 1.0f, 0.5f,
+                    kSpawnHalfSize, kSpawnHalfSize, 0.5f, 0.3f, 1.0f, 0.5f,
                     0.2f));
                 spawnTimer = kSpawnCooldown;
             }
@@ -172,10 +187,10 @@ int main() {
                 accumulator -= kStepDt;
             }
 
-            for (auto it = boxes.begin(); it != boxes.end();) {
+            for (auto it = items.begin(); it != items.end();) {
                 if (it->body->GetPosition().y < kRemoveBelowY) {
                     world.DestroyBody(it->body);
-                    it = boxes.erase(it);
+                    it = items.erase(it);
                 }
                 else {
                     ++it;
@@ -185,9 +200,8 @@ int main() {
             glClear(GL_COLOR_BUFFER_BIT);
 
             drawBoxBody(ground, kGroundHalfWidth, kGroundHalfHeight, 0.35f, 0.35f, 0.4f);
-            for (const Box& box : boxes) {
-                drawBoxBody(box.body, box.halfWidth, box.halfHeight, box.r, box.g, box.b);
-                drawAxes(box.body);
+            for (const Item& item : items) {
+                drawItem(item);
             }
 
             window.swapBuffers();
