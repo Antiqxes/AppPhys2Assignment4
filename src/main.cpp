@@ -3,7 +3,7 @@
 #include <box2d/box2d.h>
 
 #include <algorithm>
-
+#include <cmath>
 #include <cstdlib>
 #include <exception>
 #include <iostream>
@@ -19,7 +19,7 @@ namespace {
 
     constexpr float kPixelsPerMeter = 32.0f;
     constexpr float kGravity = 9.81f;
-
+    constexpr float kPi = 3.14159265;
 
     constexpr float kStepDt = 1.0f / 60.0f;
     constexpr float kMaxFrameTime = 0.05f;
@@ -37,12 +37,25 @@ namespace {
     constexpr float kBaseHalfWidth = 0.8f;
     constexpr float kBaseHalfHeight = 0.5f;
 
+    constexpr float kBarrelLength = 1.5f;
+    constexpr float kBarrelHalfThickness = 0.25f;
+    constexpr float kMinAngle = 5.0f * kPi / 180.0f;
+    constexpr float kMaxAngle = 85.0f * kPi / 180.0f;
+
     float metersToPixelsX(float xMeters) {
         return xMeters * kPixelsPerMeter;
     }
 
     float metersToPixelsY(float yMeters) {
         return kWindowHeight - yMeters * kPixelsPerMeter;
+    }
+
+    float pixelsToMetersX(float xPixels) {
+        return xPixels / kPixelsPerMeter;
+    }
+
+    float pixelsToMetersY(float yPixels) {
+        return (kWindowHeight - yPixels) / kPixelsPerMeter;
     }
 
     void drawBoxBody(const b2Body* body, float halfWidth, float halfHeight, float r, float g,
@@ -67,6 +80,14 @@ namespace {
         body->CreateFixture(&fixtureDef);
 
         return body;
+    }
+
+
+    void drawBarrel(float angle) {
+        gfx::drawBox(metersToPixelsX(kPivotX + 0.5f * kBarrelLength * std::cos(angle)),
+            metersToPixelsY(kPivotY + 0.5f * kBarrelLength * std::sin(angle)),
+            kBarrelLength * kPixelsPerMeter, kBarrelHalfThickness * 2.0f * kPixelsPerMeter,
+            -angle, 0.6f, 0.6f, 0.7f);
     }
 
 }  // namespace
@@ -98,6 +119,12 @@ int main() {
             float frameTime = std::min(static_cast<float>(now - previousTime), kMaxFrameTime);
             previousTime = now;
 
+            double mouseX = 0.0, mouseY = 0.0;
+            window.getCursorPosition(mouseX, mouseY);
+            float dx = pixelsToMetersX(static_cast<float>(mouseX)) - kPivotX;
+            float dy = pixelsToMetersY(static_cast<float>(mouseY)) - kPivotY;
+            float aimAngle = std::clamp(std::atan2(dy, dx), kMinAngle, kMaxAngle);
+
             accumulator += frameTime;
             while (accumulator >= kStepDt) {
                 world.Step(kStepDt, kVelocityIterations, kPositionIterations);
@@ -108,6 +135,7 @@ int main() {
 
             drawBoxBody(ground, kGroundHalfWidth, kGroundHalfHeight, 0.35f, 0.35f, 0.4f);
             drawBoxBody(base, kBaseHalfWidth, kBaseHalfHeight, 0.35f, 0.35f, 0.4f);
+            drawBarrel(aimAngle);
 
             window.swapBuffers();
             window.pollEvents();

@@ -1,2 +1,3 @@
 ﻿  main.cpp
+D:\iAcademy\EMC 21\AppPhys2\VSProjects\Assignment4\src\main.cpp(22,25): warning C4305: 'initializing': truncation from 'double' to 'const float'
   AppPhys2Assignment4.vcxproj -> D:\iAcademy\EMC 21\AppPhys2\VSProjects\Assignment4\x64\Debug\AppPhys2Assignment4.exe
