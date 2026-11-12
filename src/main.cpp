@@ -211,7 +211,13 @@ int main() {
             drawMuzzle(aimAngle);
             drawPowerBar(power);
             for (const Block& block : blocks) {
-                drawBoxBody(block.body, kBlockHalf, kBlockHalf, 1.0f, 0.6f, 0.2f);
+                float r = 1.0f, g = 0.6f, b = 0.2f;
+                if (!block.body->IsAwake()) {
+                    r = 0.55f;
+                    g = 0.33f;
+                    b = 0.12f;
+                }
+                drawBoxBody(block.body, kBlockHalf, kBlockHalf, r, g, b);
             }
 
             window.swapBuffers();
