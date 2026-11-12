@@ -73,6 +73,12 @@ namespace {
     constexpr int kPreviewDots = 100;
     constexpr float kDotSize = 4.0f;
 
+    constexpr int kShots = 5;
+    constexpr float kAmmoX = 24.0f;
+    constexpr float kAmmoY = 24.0f;
+    constexpr float kAmmoSize = 14.0f;
+    constexpr float kAmmoStep = 24.0f;
+
     struct Block {
         b2Body* body;
         b2Vec2 start;
@@ -253,6 +259,7 @@ int main() {
 
         float power = kMinPower;
         bool charging = false;
+        int shotsLeft = kShots;
         std::string lastTitle;
 
         double previousTime = glfwGetTime();
@@ -272,16 +279,17 @@ int main() {
             float aimAngle = std::clamp(std::atan2(dy, dx), kMinAngle, kMaxAngle);
 
             bool mouseDown = window.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
-            if (mouseDown) {
+            if (mouseDown && shotsLeft > 0) {
                 charging = true;
                 power = std::min(power + kChargeRate * frameTime, kMaxPower);
             }
-            else if (charging) {
+            else if (charging && !mouseDown) {
                 b2Body* ball = createBall(world, muzzlePoint(aimAngle));
                 float impulse = ball->GetMass() * power;
                 ball->ApplyLinearImpulseToCenter(
                     b2Vec2(impulse * std::cos(aimAngle), impulse * std::sin(aimAngle)), true);
                 balls.push_back(ball);
+                --shotsLeft;
                 charging = false;
                 power = kMinPower;
             }
@@ -313,8 +321,9 @@ int main() {
                 }
             }
 
-            std::string title = std::string("Cannon | knocked: ") + std::to_string(knockedCount) +
-                "/" + std::to_string(blocks.size());
+            std::string title = std::string("Cannon | shots: ") + std::to_string(shotsLeft) +
+                " | knocked: " + std::to_string(knockedCount) + "/" +
+                std::to_string(blocks.size());
             if (title != lastTitle) {
                 glfwSetWindowTitle(glfwGetCurrentContext(), title.c_str());
                 lastTitle = title;
@@ -328,6 +337,10 @@ int main() {
             drawMuzzle(aimAngle);
             drawPowerBar(power);
             drawArcPreview(aimAngle, power);
+            for (int i = 0; i < shotsLeft; ++i) {
+                gfx::drawBox(kAmmoX + i * kAmmoStep, kAmmoY, kAmmoSize, kAmmoSize, 0.0f, 1.0f,
+                    0.4f, 0.4f);
+            }
             for (const Block& block : blocks) {
                 float r = 1.0f, g = 0.6f, b = 0.2f;
                 if (block.knocked) {
