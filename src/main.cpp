@@ -23,10 +23,10 @@ namespace {
     constexpr float kGravity = 9.81f;
     constexpr float kPi = 3.14159265f;
 
-    constexpr float kGroundX = 12.5f;
-    constexpr float kGroundY = 1.0f;
-    constexpr float kGroundHalfWidth = 10.0f;
-    constexpr float kGroundHalfHeight = 0.5f;
+
+
+
+
 
     constexpr float kStepDt = 1.0f / 60.0f;
     constexpr float kMaxFrameTime = 0.05f;
@@ -78,13 +78,13 @@ namespace {
         return (kWindowHeight - yPixels) / kPixelsPerMeter;
     }
 
-    void drawBoxBody(const b2Body* body, float halfWidth, float halfHeight, float r, float g,
-        float b) {
-        b2Vec2 position = body->GetPosition();
-        gfx::drawBox(metersToPixelsX(position.x), metersToPixelsY(position.y),
-            halfWidth * 2.0f * kPixelsPerMeter, halfHeight * 2.0f * kPixelsPerMeter,
-            -body->GetAngle(), r, g, b);
-    }
+
+
+
+
+
+
+
 
     // A line is a thin box laid between two points.
     void drawLine(b2Vec2 start, b2Vec2 end, float r, float g, float b) {
@@ -182,17 +182,24 @@ int main() {
 
         b2World world(b2Vec2(0.0f, -kGravity));
 
-        b2BodyDef groundDef;
-        groundDef.position.Set(kGroundX, kGroundY);
-        b2Body* ground = world.CreateBody(&groundDef);
+        // A chain is one-sided: the solid side is right of the direction of travel,
+        // so the points run right to left to make the hilltops solid.
+        std::vector<b2Vec2> terrain = {
+            b2Vec2(25.0f, 8.0f),  b2Vec2(23.0f, 4.0f),  b2Vec2(20.5f, 2.0f), b2Vec2(18.0f, 3.5f),
+            b2Vec2(15.5f, 2.5f),  b2Vec2(12.5f, 1.5f),  b2Vec2(9.5f, 2.0f),  b2Vec2(7.0f, 3.5f),
+            b2Vec2(4.0f, 2.5f),   b2Vec2(1.5f, 4.0f),   b2Vec2(0.0f, 8.0f),
+        };
+        b2BodyDef terrainDef;
+        b2Body* terrainBody = world.CreateBody(&terrainDef);
 
-        b2PolygonShape groundShape;
-        groundShape.SetAsBox(kGroundHalfWidth, kGroundHalfHeight);
+        b2ChainShape terrainShape;
+        terrainShape.CreateChain(terrain.data(), static_cast<int>(terrain.size()),
+            b2Vec2(26.0f, 12.0f), b2Vec2(-1.0f, 12.0f));
 
-        b2FixtureDef groundFixture;
-        groundFixture.shape = &groundShape;
-        groundFixture.friction = 0.6f;
-        ground->CreateFixture(&groundFixture);
+        b2FixtureDef terrainFixture;
+        terrainFixture.shape = &terrainShape;
+        terrainFixture.friction = 0.6f;
+        terrainBody->CreateFixture(&terrainFixture);
 
         std::vector<Item> items;
 
@@ -248,7 +255,10 @@ int main() {
 
             glClear(GL_COLOR_BUFFER_BIT);
 
-            drawBoxBody(ground, kGroundHalfWidth, kGroundHalfHeight, 0.35f, 0.35f, 0.4f);
+            for (size_t i = 0; i + 1 < terrain.size(); ++i) {
+                drawLine(terrain[i], terrain[i + 1], 0.85f, 0.85f, 0.88f);
+            }
+
             for (const Item& item : items) {
                 drawItem(item);
             }
