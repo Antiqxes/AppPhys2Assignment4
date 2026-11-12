@@ -294,10 +294,13 @@ int main() {
             drawPowerBar(power);
             for (const Block& block : blocks) {
                 float r = 1.0f, g = 0.6f, b = 0.2f;
+                if (block.knocked) {
+                    r = 0.2f, g = 1.0f, b = 0.6f;
+                }
                 if (!block.body->IsAwake()) {
-                    r = 0.55f;
-                    g = 0.33f;
-                    b = 0.12f;
+                    r *= 0.5f;
+                    g *= 0.5f;
+                    b *= 0.5;
                 }
                 drawBoxBody(block.body, kBlockHalf, kBlockHalf, r, g, b);
             }
