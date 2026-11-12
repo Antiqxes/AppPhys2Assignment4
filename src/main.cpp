@@ -253,7 +253,11 @@ int main() {
                 power = std::min(power + kChargeRate * frameTime, kMaxPower);
             }
             else if (charging) {
-                balls.push_back(createBall(world, muzzlePoint(aimAngle)));
+                b2Body* ball = createBall(world, muzzlePoint(aimAngle));
+                float impulse = ball->GetMass() * power;
+                ball->ApplyLinearImpulseToCenter(
+                    b2Vec2(impulse * std::cos(aimAngle), impulse * std::sin(aimAngle)), true);
+                balls.push_back(ball);
                 charging = false;
                 power = kMinPower;
             }
