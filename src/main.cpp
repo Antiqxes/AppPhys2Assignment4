@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <exception>
 #include <iostream>
+#include <string>
 #include <vector>
 
 #include "core/glfw_context.h"
@@ -60,16 +61,17 @@ namespace {
     constexpr float kBobRadius = 0.6f;
 
     struct ShapeStyle {
+        const char* name;
         int sides;
         float r, g, b;
     };
 
     constexpr ShapeStyle kShapes[] = {
-        {4, 1.0f, 0.6f, 0.2f},
-        {0, 0.4f, 0.8f, 1.0f},
-        {3, 1.0f, 0.9f, 0.3f},
-        {5, 0.8f, 0.5f, 1.0f},
-        {6, 0.5f, 1.0f, 0.6f},
+        {"box", 4, 1.0f, 0.6f, 0.2f},
+        {"circle", 0, 0.4f, 0.8f, 1.0f},
+        {"triangle", 3, 1.0f, 0.9f, 0.3f},
+        {"pentagon", 5, 0.8f, 0.5f, 1.0f},
+        {"hexagon", 6, 0.5f, 1.0f, 0.6f},
     };
     constexpr int kShapeCount = 5;
 
@@ -303,6 +305,7 @@ int main() {
         int selectedShape = 0;
         bool showAabb = false;
         bool bWasDown = false;
+        std::string lastTitle;
 
         float spawnTimer = 0.0f;
 
@@ -362,6 +365,15 @@ int main() {
                 else {
                     ++it;
                 }
+            }
+
+            std::string title = std::string("Box2D | shape: ") + kShapes[selectedShape].name +
+                " | bodies: " + std::to_string(world.GetBodyCount()) +
+                " | contacts: " + std::to_string(world.GetContactCount()) +
+                " | joints: " + std::to_string(world.GetJointCount());
+            if (title != lastTitle) {
+                glfwSetWindowTitle(glfwGetCurrentContext(), title.c_str());
+                lastTitle = title;
             }
 
             glClear(GL_COLOR_BUFFER_BIT);
