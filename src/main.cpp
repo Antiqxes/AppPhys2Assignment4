@@ -7,30 +7,31 @@
 #include <cstdlib>
 #include <exception>
 #include <iostream>
+#include <vector>
+
 #include "core/glfw_context.h"
 #include "core/input.h"
 #include "core/window.h"
 #include "draw.h"
 
 namespace {
-
     constexpr int kWindowWidth = 800;
     constexpr int kWindowHeight = 600;
 
     constexpr float kPixelsPerMeter = 32.0f;
     constexpr float kGravity = 9.81f;
-    constexpr float kPi = 3.14159265;
+    constexpr float kPi = 3.14159265f;
 
     constexpr float kStepDt = 1.0f / 60.0f;
     constexpr float kMaxFrameTime = 0.05f;
     constexpr int kVelocityIterations = 8;
     constexpr int kPositionIterations = 3;
 
-
     constexpr float kGroundX = 12.5f;
     constexpr float kGroundY = 1.0f;
     constexpr float kGroundHalfWidth = 12.5f;
     constexpr float kGroundHalfHeight = 0.5f;
+    constexpr float kGroundTop = kGroundY + kGroundHalfHeight;
 
     constexpr float kPivotX = 3.0f;
     constexpr float kPivotY = 2.5f;
@@ -50,6 +51,15 @@ namespace {
     constexpr float kBarY = 580.0f;
     constexpr float kBarWidth = 200.0f;
     constexpr float kBarHeight = 16.0f;
+
+    constexpr float kBlockHalf = 0.4f;
+    constexpr float kTowerLeftX = 19.0f;
+    constexpr int kTowerColumns = 3;
+    constexpr int kTowerRows = 5;
+
+    struct Block {
+        b2Body* body;
+    };
 
     float metersToPixelsX(float xMeters) {
         return xMeters * kPixelsPerMeter;
@@ -117,6 +127,29 @@ namespace {
             0.0f, 0.31f, 0.76f, 0.97f);
     }
 
+    void buildTower(b2World& world, std::vector<Block>& blocks) {
+        for (int column = 0; column < kTowerColumns; ++column) {
+            for (int row = 0; row < kTowerRows; ++row) {
+                b2BodyDef bodyDef;
+                bodyDef.type = b2_dynamicBody;
+                bodyDef.position.Set(kTowerLeftX + (column + 0.5f) * 2.0f * kBlockHalf,
+                    kGroundTop + (row + 0.5f) * 2.0f * kBlockHalf);
+                b2Body* body = world.CreateBody(&bodyDef);
+
+                b2PolygonShape shape;
+                shape.SetAsBox(kBlockHalf, kBlockHalf);
+
+                b2FixtureDef fixtureDef;
+                fixtureDef.shape = &shape;
+                fixtureDef.density = 1.0f;
+                fixtureDef.friction = 0.6f;
+                fixtureDef.restitution = 0.0f;
+                body->CreateFixture(&fixtureDef);
+
+                blocks.push_back({ body });
+            }
+        }
+    }
 }  // namespace
 
 int main() {
@@ -133,6 +166,8 @@ int main() {
         b2Body* base = createStaticBox(world, kPivotX, kPivotY - kBaseHalfHeight, kBaseHalfWidth,
             kBaseHalfHeight);
 
+        std::vector<Block> blocks;
+        buildTower(world, blocks);
 
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
@@ -175,6 +210,9 @@ int main() {
             drawBarrel(aimAngle);
             drawMuzzle(aimAngle);
             drawPowerBar(power);
+            for (const Block& block : blocks) {
+                drawBoxBody(block.body, kBlockHalf, kBlockHalf, 1.0f, 0.6f, 0.2f);
+            }
 
             window.swapBuffers();
             window.pollEvents();
