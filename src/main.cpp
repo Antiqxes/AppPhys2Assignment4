@@ -53,6 +53,12 @@ namespace {
     constexpr float kLinkLength = 1.0f;
     constexpr float kLinkHalfThickness = 0.15f;
 
+    constexpr float kPendulumAnchorX = 21.0f;
+    constexpr float kPendulumAnchorY = 17.0f;
+    constexpr float kBobOffsetX = 3.0f;
+    constexpr float kBobOffsetY = 4.0f;
+    constexpr float kBobRadius = 0.6f;
+
     struct ShapeStyle {
         int sides;
         float r, g, b;
@@ -267,6 +273,29 @@ int main() {
             previous = link;
         }
 
+        b2BodyDef pendulumAnchorDef;
+        pendulumAnchorDef.position.Set(kPendulumAnchorX, kPendulumAnchorY);
+        b2Body* pendulumAnchor = world.CreateBody(&pendulumAnchorDef);
+
+        b2BodyDef bobDef;
+        bobDef.type = b2_dynamicBody;
+        bobDef.position.Set(kPendulumAnchorX + kBobOffsetX, kPendulumAnchorY - kBobOffsetY);
+        b2Body* bob = world.CreateBody(&bobDef);
+
+        b2CircleShape bobShape;
+        bobShape.m_radius = kBobRadius;
+
+        b2FixtureDef bobFixture;
+        bobFixture.shape = &bobShape;
+        bobFixture.density = 2.0f;
+        bobFixture.friction = 0.3f;
+        bob->CreateFixture(&bobFixture);
+
+        b2DistanceJointDef pendulumJoint;
+        pendulumJoint.Initialize(pendulumAnchor, bob, pendulumAnchor->GetPosition(),
+            bob->GetPosition());
+        world.CreateJoint(&pendulumJoint);
+
         std::vector<Item> items;
 
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -348,6 +377,9 @@ int main() {
                 drawBoxBody(link, kLinkLength * 0.5f, kLinkHalfThickness, 0.9f, 0.8f, 0.5f);
             }
 
+            drawBoxBody(pendulumAnchor, kAnchorHalfSize, kAnchorHalfSize, 0.35f, 0.35f, 0.4f);
+            drawLine(pendulumAnchor->GetPosition(), bob->GetPosition(), 0.9f, 0.9f, 0.9f);
+            drawCircle(bob->GetPosition(), kBobRadius, 1.0f, 0.4f, 0.4f);
 
             for (const Item& item : items) {
                 drawItem(item, showAabb);
