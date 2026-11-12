@@ -46,8 +46,8 @@ namespace {
     constexpr float kMuzzleSize = 8.0f;
 
     constexpr float kMinPower = 20.0f;
-    constexpr float kMaxPower = 40.0f;
-    constexpr float kChargeRate = 20.0f;
+    constexpr float kMaxPower = 120.0f;
+    constexpr float kChargeRate = 50.0f;
     constexpr float kBarX = 20.0f;
     constexpr float kBarY = 580.0f;
     constexpr float kBarWidth = 200.0f;
