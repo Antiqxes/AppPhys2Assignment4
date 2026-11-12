@@ -45,6 +45,14 @@ namespace {
     constexpr float kPlatformMaxX = 15.5f;
     constexpr float kPlatformSpeed = 2.0f;
 
+    constexpr float kAnchorHalfSize = 0.2f;
+
+    constexpr float kRopeAnchorX = 3.0f;
+    constexpr float kRopeAnchorY = 16.0f;
+    constexpr int kRopeLinks = 6;
+    constexpr float kLinkLength = 1.0f;
+    constexpr float kLinkHalfThickness = 0.15f;
+
     struct ShapeStyle {
         int sides;
         float r, g, b;
@@ -228,6 +236,37 @@ int main() {
         platformFixture.friction = 0.8f;
         platform->CreateFixture(&platformFixture);
 
+        b2BodyDef ropeAnchorDef;
+        ropeAnchorDef.position.Set(kRopeAnchorX, kRopeAnchorY);
+        b2Body* ropeAnchor = world.CreateBody(&ropeAnchorDef);
+
+        std::vector<b2Body*> rope;
+        b2Body* previous = ropeAnchor;
+        for (int i = 0; i < kRopeLinks; ++i) {
+            b2BodyDef linkDef;
+            linkDef.type = b2_dynamicBody;
+            linkDef.position.Set(kRopeAnchorX + (i + 0.5f) * kLinkLength, kRopeAnchorY);
+            linkDef.angularDamping = 0.3f;
+            b2Body* link = world.CreateBody(&linkDef);
+
+            b2PolygonShape linkShape;
+            linkShape.SetAsBox(kLinkLength * 0.5f, kLinkHalfThickness);
+
+            b2FixtureDef linkFixture;
+            linkFixture.shape = &linkShape;
+            linkFixture.density = 1.0f;
+            linkFixture.friction = 0.4f;
+            link->CreateFixture(&linkFixture);
+
+            b2RevoluteJointDef jointDef;
+            jointDef.Initialize(previous, link,
+                b2Vec2(kRopeAnchorX + i * kLinkLength, kRopeAnchorY));
+            world.CreateJoint(&jointDef);
+
+            rope.push_back(link);
+            previous = link;
+        }
+
         std::vector<Item> items;
 
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -303,6 +342,12 @@ int main() {
             }
 
             drawBoxBody(platform, kPlatformHalfWidth, kPlatformHalfHeight, 0.35f, 0.35f, 0.4f);
+
+            drawBoxBody(ropeAnchor, kAnchorHalfSize, kAnchorHalfSize, 0.35f, 0.35f, 0.4f);
+            for (b2Body* link : rope) {
+                drawBoxBody(link, kLinkLength * 0.5f, kLinkHalfThickness, 0.9f, 0.8f, 0.5f);
+            }
+
 
             for (const Item& item : items) {
                 drawItem(item, showAabb);
