@@ -66,6 +66,8 @@ namespace {
     constexpr float kBallRadius = 0.2f;
     constexpr float kBallDensity = 3.0f;
 
+    constexpr float kWorldWidth = kWindowWidth / kPixelsPerMeter;
+    constexpr float kRemoveBelowY = -10.0f;
 
     struct Block {
         b2Body* body;
@@ -275,6 +277,17 @@ int main() {
                 }
                 if (block.knocked) {
                     ++knockedCount;
+                }
+            }
+
+            for (auto it = balls.begin(); it != balls.end();) {
+                b2Vec2 position = (*it)->GetPosition();
+                if (position.x < 0.0f || position.x > kWorldWidth || position.y < kRemoveBelowY) {
+                    world.DestroyBody(*it);
+                    it = balls.erase(it);
+                }
+                else {
+                    ++it;
                 }
             }
 
