@@ -203,6 +203,8 @@ namespace {
         bodyDef.position = position;
         // Without this, a fast ball can jump over a thin body in one step.
         bodyDef.bullet = true;
+        // Box2D has no rolling friction. Without this the ball rolls forever and never sleeps.
+        bodyDef.angularDamping = 5.0f;
         b2Body* body = world.CreateBody(&bodyDef);
 
         b2CircleShape shape;
@@ -234,6 +236,17 @@ namespace {
         }
     }
 
+    bool isSettled(const b2World& world) {
+        for (const b2Body* body = world.GetBodyList(); body; body = body->GetNext()) {
+            // A body that fell out of the world does not count.
+            if (body->GetType() == b2_dynamicBody && body->IsAwake() &&
+                body->GetPosition().y > kRemoveBelowY) {
+                return false;
+            }
+        }
+        return true;
+    }
+
 }  // namespace
 
 int main() {
@@ -260,6 +273,7 @@ int main() {
         float power = kMinPower;
         bool charging = false;
         int shotsLeft = kShots;
+        bool gameOver = false;
         std::string lastTitle;
 
         double previousTime = glfwGetTime();
@@ -279,7 +293,7 @@ int main() {
             float aimAngle = std::clamp(std::atan2(dy, dx), kMinAngle, kMaxAngle);
 
             bool mouseDown = window.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
-            if (mouseDown && shotsLeft > 0) {
+            if (mouseDown && shotsLeft > 0 && !gameOver) {
                 charging = true;
                 power = std::min(power + kChargeRate * frameTime, kMaxPower);
             }
@@ -321,9 +335,23 @@ int main() {
                 }
             }
 
+            bool won = knockedCount == static_cast<int>(blocks.size());
+            bool lost = !won && shotsLeft == 0 && isSettled(world);
+            gameOver = won || lost;
+            if (gameOver) {
+                charging = false;
+                power = kMinPower;
+            }
+
             std::string title = std::string("Cannon | shots: ") + std::to_string(shotsLeft) +
                 " | knocked: " + std::to_string(knockedCount) + "/" +
                 std::to_string(blocks.size());
+            if (won) {
+                title += " | WIN";
+            }
+            else if (lost) {
+                title += " | LOSE";
+            }
             if (title != lastTitle) {
                 glfwSetWindowTitle(glfwGetCurrentContext(), title.c_str());
                 lastTitle = title;
