@@ -41,6 +41,7 @@ namespace {
     constexpr float kBarrelHalfThickness = 0.25f;
     constexpr float kMinAngle = 5.0f * kPi / 180.0f;
     constexpr float kMaxAngle = 85.0f * kPi / 180.0f;
+    constexpr float kMuzzleSize = 8.0f;
 
     float metersToPixelsX(float xMeters) {
         return xMeters * kPixelsPerMeter;
@@ -82,12 +83,22 @@ namespace {
         return body;
     }
 
+    b2Vec2 muzzlePoint(float angle) {
+        return b2Vec2(kPivotX + kBarrelLength * std::cos(angle),
+            kPivotY + kBarrelLength * std::sin(angle));
+    }
 
     void drawBarrel(float angle) {
         gfx::drawBox(metersToPixelsX(kPivotX + 0.5f * kBarrelLength * std::cos(angle)),
             metersToPixelsY(kPivotY + 0.5f * kBarrelLength * std::sin(angle)),
             kBarrelLength * kPixelsPerMeter, kBarrelHalfThickness * 2.0f * kPixelsPerMeter,
             -angle, 0.6f, 0.6f, 0.7f);
+    }
+
+    void drawMuzzle(float angle) {
+        b2Vec2 muzzle = muzzlePoint(angle);
+        gfx::drawBox(metersToPixelsX(muzzle.x), metersToPixelsY(muzzle.y), kMuzzleSize, kMuzzleSize,
+            0.0f, 1.0f, 0.9f, 0.3f);
     }
 
 }  // namespace
@@ -136,6 +147,7 @@ int main() {
             drawBoxBody(ground, kGroundHalfWidth, kGroundHalfHeight, 0.35f, 0.35f, 0.4f);
             drawBoxBody(base, kBaseHalfWidth, kBaseHalfHeight, 0.35f, 0.35f, 0.4f);
             drawBarrel(aimAngle);
+            drawMuzzle(aimAngle);
 
             window.swapBuffers();
             window.pollEvents();
