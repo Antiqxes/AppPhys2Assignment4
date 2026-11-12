@@ -60,6 +60,13 @@ namespace {
 
     constexpr float kKnockDistance = 0.3f;
 
+    constexpr float kLineThickness = 2.0f;
+    constexpr int kCircleSegments = 24;
+
+    constexpr float kBallRadius = 0.2f;
+    constexpr float kBallDensity = 3.0f;
+
+
     struct Block {
         b2Body* body;
         b2Vec2 start;
@@ -155,6 +162,48 @@ namespace {
             }
         }
     }
+
+    // A line is a thin box laid between two points.
+    void drawLine(b2Vec2 start, b2Vec2 end, float r, float g, float b) {
+        float x1 = metersToPixelsX(start.x);
+        float y1 = metersToPixelsY(start.y);
+        float x2 = metersToPixelsX(end.x);
+        float y2 = metersToPixelsY(end.y);
+        float dx = x2 - x1;
+        float dy = y2 - y1;
+        gfx::drawBox((x1 + x2) * 0.5f, (y1 + y2) * 0.5f, std::sqrt(dx * dx + dy * dy) + kLineThickness,
+            kLineThickness, std::atan2(dy, dx), r, g, b);
+    }
+
+    void drawCircle(b2Vec2 center, float radius, float r, float g, float b) {
+        for (int i = 0; i < kCircleSegments; ++i) {
+            float a1 = 2.0f * kPi * i / kCircleSegments;
+            float a2 = 2.0f * kPi * (i + 1) / kCircleSegments;
+            drawLine(b2Vec2(center.x + radius * std::cos(a1), center.y + radius * std::sin(a1)),
+                b2Vec2(center.x + radius * std::cos(a2), center.y + radius * std::sin(a2)), r, g,
+                b);
+        }
+    }
+
+    b2Body* createBall(b2World& world, b2Vec2 position) {
+        b2BodyDef bodyDef;
+        bodyDef.type = b2_dynamicBody;
+        bodyDef.position = position;
+        b2Body* body = world.CreateBody(&bodyDef);
+
+        b2CircleShape shape;
+        shape.m_radius = kBallRadius;
+
+        b2FixtureDef fixtureDef;
+        fixtureDef.shape = &shape;
+        fixtureDef.density = kBallDensity;
+        fixtureDef.friction = 0.4f;
+        fixtureDef.restitution = 0.2f;
+        body->CreateFixture(&fixtureDef);
+
+        return body;
+    }
+
 }  // namespace
 
 int main() {
@@ -174,9 +223,12 @@ int main() {
         std::vector<Block> blocks;
         buildTower(world, blocks);
 
+        std::vector<b2Body*> balls;
+
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
         float power = kMinPower;
+        bool charging = false;
         std::string lastTitle;
 
         double previousTime = glfwGetTime();
@@ -197,9 +249,12 @@ int main() {
 
             bool mouseDown = window.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
             if (mouseDown) {
+                charging = true;
                 power = std::min(power + kChargeRate * frameTime, kMaxPower);
             }
-            else {
+            else if (charging) {
+                balls.push_back(createBall(world, muzzlePoint(aimAngle)));
+                charging = false;
                 power = kMinPower;
             }
 
@@ -241,6 +296,9 @@ int main() {
                     b = 0.12f;
                 }
                 drawBoxBody(block.body, kBlockHalf, kBlockHalf, r, g, b);
+            }
+            for (const b2Body* ball : balls) {
+                drawCircle(ball->GetPosition(), kBallRadius, 1.0f, 0.4f, 0.4f);
             }
 
             window.swapBuffers();
