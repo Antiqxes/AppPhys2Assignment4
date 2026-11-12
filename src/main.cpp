@@ -195,6 +195,8 @@ namespace {
         b2BodyDef bodyDef;
         bodyDef.type = b2_dynamicBody;
         bodyDef.position = position;
+        // Without this, a fast ball can jump over a thin body in one step.
+        bodyDef.bullet = true;
         b2Body* body = world.CreateBody(&bodyDef);
 
         b2CircleShape shape;
