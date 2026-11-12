@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <exception>
 #include <iostream>
+#include <string>
 #include <vector>
 
 #include "core/glfw_context.h"
@@ -57,8 +58,12 @@ namespace {
     constexpr int kTowerColumns = 3;
     constexpr int kTowerRows = 5;
 
+    constexpr float kKnockDistance = 0.3f;
+
     struct Block {
         b2Body* body;
+        b2Vec2 start;
+        bool knocked;
     };
 
     float metersToPixelsX(float xMeters) {
@@ -146,7 +151,7 @@ namespace {
                 fixtureDef.restitution = 0.0f;
                 body->CreateFixture(&fixtureDef);
 
-                blocks.push_back({ body });
+                blocks.push_back({ body, body->GetPosition(), false });
             }
         }
     }
@@ -172,6 +177,7 @@ int main() {
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
         float power = kMinPower;
+        std::string lastTitle;
 
         double previousTime = glfwGetTime();
         float accumulator = 0.0f;
@@ -201,6 +207,23 @@ int main() {
             while (accumulator >= kStepDt) {
                 world.Step(kStepDt, kVelocityIterations, kPositionIterations);
                 accumulator -= kStepDt;
+            }
+
+            int knockedCount = 0;
+            for (Block& block : blocks) {
+                if ((block.body->GetPosition() - block.start).Length() > kKnockDistance) {
+                    block.knocked = true;
+                }
+                if (block.knocked) {
+                    ++knockedCount;
+                }
+            }
+
+            std::string title = std::string("Cannon | knocked: ") + std::to_string(knockedCount) +
+                "/" + std::to_string(blocks.size());
+            if (title != lastTitle) {
+                glfwSetWindowTitle(glfwGetCurrentContext(), title.c_str());
+                lastTitle = title;
             }
 
             glClear(GL_COLOR_BUFFER_BIT);
