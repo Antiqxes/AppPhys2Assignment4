@@ -43,6 +43,14 @@ namespace {
     constexpr float kMaxAngle = 85.0f * kPi / 180.0f;
     constexpr float kMuzzleSize = 8.0f;
 
+    constexpr float kMinPower = 20.0f;
+    constexpr float kMaxPower = 40.0f;
+    constexpr float kChargeRate = 20.0f;
+    constexpr float kBarX = 20.0f;
+    constexpr float kBarY = 580.0f;
+    constexpr float kBarWidth = 200.0f;
+    constexpr float kBarHeight = 16.0f;
+
     float metersToPixelsX(float xMeters) {
         return xMeters * kPixelsPerMeter;
     }
@@ -101,6 +109,14 @@ namespace {
             0.0f, 1.0f, 0.9f, 0.3f);
     }
 
+    void drawPowerBar(float power) {
+        float fraction = (power - kMinPower) / (kMaxPower - kMinPower);
+        gfx::drawBox(kBarX + kBarWidth * 0.5f, kBarY, kBarWidth, kBarHeight, 0.0f, 0.25f, 0.25f,
+            0.3f);
+        gfx::drawBox(kBarX + kBarWidth * fraction * 0.5f, kBarY, kBarWidth * fraction, kBarHeight,
+            0.0f, 0.31f, 0.76f, 0.97f);
+    }
+
 }  // namespace
 
 int main() {
@@ -120,6 +136,8 @@ int main() {
 
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
+        float power = kMinPower;
+
         double previousTime = glfwGetTime();
         float accumulator = 0.0f;
 
@@ -136,6 +154,14 @@ int main() {
             float dy = pixelsToMetersY(static_cast<float>(mouseY)) - kPivotY;
             float aimAngle = std::clamp(std::atan2(dy, dx), kMinAngle, kMaxAngle);
 
+            bool mouseDown = window.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
+            if (mouseDown) {
+                power = std::min(power + kChargeRate * frameTime, kMaxPower);
+            }
+            else {
+                power = kMinPower;
+            }
+
             accumulator += frameTime;
             while (accumulator >= kStepDt) {
                 world.Step(kStepDt, kVelocityIterations, kPositionIterations);
@@ -148,6 +174,7 @@ int main() {
             drawBoxBody(base, kBaseHalfWidth, kBaseHalfHeight, 0.35f, 0.35f, 0.4f);
             drawBarrel(aimAngle);
             drawMuzzle(aimAngle);
+            drawPowerBar(power);
 
             window.swapBuffers();
             window.pollEvents();
