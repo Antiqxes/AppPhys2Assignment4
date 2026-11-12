@@ -69,6 +69,10 @@ namespace {
     constexpr float kWorldWidth = kWindowWidth / kPixelsPerMeter;
     constexpr float kRemoveBelowY = -10.0f;
 
+    constexpr float kPreviewStep = 0.02f;
+    constexpr int kPreviewDots = 100;
+    constexpr float kDotSize = 4.0f;
+
     struct Block {
         b2Body* body;
         b2Vec2 start;
@@ -206,6 +210,22 @@ namespace {
         return body;
     }
 
+    void drawArcPreview(float angle, float power) {
+        b2Vec2 start = muzzlePoint(angle);
+        float vx = power * std::cos(angle);
+        float vy = power * std::sin(angle);
+        for (int i = 1; i <= kPreviewDots; ++i) {
+            float t = i * kPreviewStep;
+            float x = start.x + vx * t;
+            float y = start.y + vy * t - 0.5f * kGravity * t * t;
+            if (y < kGroundTop || x > kWorldWidth) {
+                break;
+            }
+            gfx::drawBox(metersToPixelsX(x), metersToPixelsY(y), kDotSize, kDotSize, 0.0f, 1.0f, 1.0f,
+                1.0f);
+        }
+    }
+
 }  // namespace
 
 int main() {
@@ -305,6 +325,7 @@ int main() {
             drawBarrel(aimAngle);
             drawMuzzle(aimAngle);
             drawPowerBar(power);
+            drawArcPreview(aimAngle, power);
             for (const Block& block : blocks) {
                 float r = 1.0f, g = 0.6f, b = 0.2f;
                 if (block.knocked) {
