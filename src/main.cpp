@@ -274,6 +274,7 @@ int main() {
         bool charging = false;
         int shotsLeft = kShots;
         bool gameOver = false;
+        bool rWasDown = false;
         std::string lastTitle;
 
         double previousTime = glfwGetTime();
@@ -285,6 +286,24 @@ int main() {
             double now = glfwGetTime();
             float frameTime = std::min(static_cast<float>(now - previousTime), kMaxFrameTime);
             previousTime = now;
+
+            bool rDown = window.isKeyPressed(GLFW_KEY_R);
+            if (rDown && !rWasDown) {
+                for (const Block& block : blocks) {
+                    world.DestroyBody(block.body);
+                }
+                blocks.clear();
+                buildTower(world, blocks);
+                for (b2Body* ball : balls) {
+                    world.DestroyBody(ball);
+                }
+                balls.clear();
+                shotsLeft = kShots;
+                gameOver = false;
+                charging = false;
+                power = kMinPower;
+            }
+            rWasDown = rDown;
 
             double mouseX = 0.0, mouseY = 0.0;
             window.getCursorPosition(mouseX, mouseY);
