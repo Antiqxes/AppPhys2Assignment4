@@ -58,7 +58,9 @@ namespace {
     constexpr int kTowerColumns = 3;
     constexpr int kTowerRows = 5;
 
-    constexpr float kKnockDistance = 0.3f;
+    constexpr uint16 kCategoryGround = 0x0001;
+    constexpr uint16 kCategoryBall = 0x0002;
+    constexpr uint16 kCategoryBlock = 0x0004;
 
     constexpr float kLineThickness = 2.0f;
     constexpr int kCircleSegments = 24;
@@ -81,7 +83,6 @@ namespace {
 
     struct Block {
         b2Body* body;
-        b2Vec2 start;
         bool knocked;
     };
 
@@ -120,6 +121,7 @@ namespace {
         b2FixtureDef fixtureDef;
         fixtureDef.shape = &shape;
         fixtureDef.friction = 0.6f;
+        fixtureDef.filter.categoryBits = kCategoryGround;
         body->CreateFixture(&fixtureDef);
 
         return body;
@@ -152,6 +154,8 @@ namespace {
     }
 
     void buildTower(b2World& world, std::vector<Block>& blocks) {
+        blocks.reserve(kTowerColumns * kTowerRows);
+
         for (int column = 0; column < kTowerColumns; ++column) {
             for (int row = 0; row < kTowerRows; ++row) {
                 b2BodyDef bodyDef;
@@ -168,12 +172,15 @@ namespace {
                 fixtureDef.density = 1.0f;
                 fixtureDef.friction = 0.6f;
                 fixtureDef.restitution = 0.0f;
+                fixtureDef.filter.categoryBits = kCategoryBlock;
                 body->CreateFixture(&fixtureDef);
 
-                blocks.push_back({ body, body->GetPosition(), false });
+                blocks.push_back({ body, false });
+                body->GetUserData().pointer = reinterpret_cast<uintptr_t>(&blocks.back());
             }
         }
     }
+
 
     // A line is a thin box laid between two points.
     void drawLine(b2Vec2 start, b2Vec2 end, float r, float g, float b) {
@@ -215,6 +222,7 @@ namespace {
         fixtureDef.density = kBallDensity;
         fixtureDef.friction = 0.4f;
         fixtureDef.restitution = 0.2f;
+        fixtureDef.filter.categoryBits = kCategoryBall;
         body->CreateFixture(&fixtureDef);
 
         return body;
@@ -247,6 +255,41 @@ namespace {
         return true;
     }
 
+    class KnockContactListener : public b2ContactListener {
+    public:
+        void BeginContact(b2Contact* contact) override {
+            b2Fixture* fixA = contact->GetFixtureA();
+            b2Fixture* fixB = contact->GetFixtureB();
+
+            uint16 catA = fixA->GetFilterData().categoryBits;
+            uint16 catB = fixB->GetFilterData().categoryBits;
+
+            // Case 1: Ball touches a Block
+            if (catA == kCategoryBall && catB == kCategoryBlock) {
+                auto* blockB = reinterpret_cast<Block*>(fixB->GetBody()->GetUserData().pointer);
+                blockB->knocked = true;
+            }
+            else if (catB == kCategoryBall && catA == kCategoryBlock) {
+                auto* blockA = reinterpret_cast<Block*>(fixA->GetBody()->GetUserData().pointer);
+                blockA->knocked = true;
+            }
+            // Case 2: Block touches another Block
+            else if (catA == kCategoryBlock && catB == kCategoryBlock) {
+                auto* blockA = reinterpret_cast<Block*>(fixA->GetBody()->GetUserData().pointer);
+                auto* blockB = reinterpret_cast<Block*>(fixB->GetBody()->GetUserData().pointer);
+                if (blockA->knocked || blockB->knocked) {
+                    blockA->knocked = true;
+                    blockB->knocked = true;
+                }
+            }
+        }
+
+        void PreSolve(b2Contact* contact, const b2Manifold* oldManifold) override {
+            BeginContact(contact);
+        }
+    };
+
+
 }  // namespace
 
 int main() {
@@ -257,6 +300,8 @@ int main() {
         gfx::initDraw(kWindowWidth, kWindowHeight);
 
         b2World world(b2Vec2(0.0f, -kGravity));
+        KnockContactListener contactListener;
+        world.SetContactListener(&contactListener);
 
         b2Body* ground =
             createStaticBox(world, kGroundX, kGroundY, kGroundHalfWidth, kGroundHalfHeight);
@@ -334,10 +379,7 @@ int main() {
             }
 
             int knockedCount = 0;
-            for (Block& block : blocks) {
-                if ((block.body->GetPosition() - block.start).Length() > kKnockDistance) {
-                    block.knocked = true;
-                }
+            for (const Block& block : blocks) {
                 if (block.knocked) {
                     ++knockedCount;
                 }
