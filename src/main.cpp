@@ -61,6 +61,7 @@ namespace {
     constexpr uint16 kCategoryGround = 0x0001;
     constexpr uint16 kCategoryBall = 0x0002;
     constexpr uint16 kCategoryBlock = 0x0004;
+    constexpr uint16 kCategorySensor = 0x0008;
 
     constexpr float kLineThickness = 2.0f;
     constexpr int kCircleSegments = 24;
@@ -69,7 +70,6 @@ namespace {
     constexpr float kBallDensity = 3.0f;
 
     constexpr float kWorldWidth = kWindowWidth / kPixelsPerMeter;
-    constexpr float kRemoveBelowY = -10.0f;
 
     constexpr float kPreviewStep = 0.02f;
     constexpr int kPreviewDots = 100;
@@ -84,6 +84,7 @@ namespace {
     struct Block {
         b2Body* body;
         bool knocked;
+        bool outOfBounds = false;
     };
 
     float metersToPixelsX(float xMeters) {
@@ -175,7 +176,7 @@ namespace {
                 fixtureDef.filter.categoryBits = kCategoryBlock;
                 body->CreateFixture(&fixtureDef);
 
-                blocks.push_back({ body, false });
+                blocks.push_back({ body, false, false });
                 body->GetUserData().pointer = reinterpret_cast<uintptr_t>(&blocks.back());
             }
         }
@@ -246,17 +247,28 @@ namespace {
 
     bool isSettled(const b2World& world) {
         for (const b2Body* body = world.GetBodyList(); body; body = body->GetNext()) {
-            // A body that fell out of the world does not count.
-            if (body->GetType() == b2_dynamicBody && body->IsAwake() &&
-                body->GetPosition().y > kRemoveBelowY) {
-                return false;
+            if (body->GetType() != b2_dynamicBody || !body->IsAwake()) {
+                continue;
             }
+
+            uint16 category = body->GetFixtureList()->GetFilterData().categoryBits;
+            if (category == kCategoryBlock) {
+                const auto* block = reinterpret_cast<const Block*>(body->GetUserData().pointer);
+                if (block && block->outOfBounds) {
+                    continue;
+                }
+            }
+
+            return false;
         }
         return true;
     }
 
+
     class KnockContactListener : public b2ContactListener {
     public:
+        std::vector<b2Body*> ballsToDestroy;
+
         void BeginContact(b2Contact* contact) override {
             b2Fixture* fixA = contact->GetFixtureA();
             b2Fixture* fixB = contact->GetFixtureB();
@@ -282,12 +294,68 @@ namespace {
                     blockB->knocked = true;
                 }
             }
+            // Case 3: Ball touches the Out-of-Bounds Sensor
+            else if (catA == kCategoryBall && catB == kCategorySensor) {
+                queueBallRemoval(fixA->GetBody());
+            }
+            else if (catB == kCategoryBall && catA == kCategorySensor) {
+                queueBallRemoval(fixB->GetBody());
+            }
+			// Case 4: Block touches the Out-of-Bounds Sensor
+            else if (catA == kCategoryBlock && catB == kCategorySensor) {
+                auto* blockA = reinterpret_cast<Block*>(fixA->GetBody()->GetUserData().pointer);
+                blockA->outOfBounds = true;
+                blockA->knocked = true;
+            }
+            else if (catB == kCategoryBlock && catA == kCategorySensor) {
+                auto* blockB = reinterpret_cast<Block*>(fixB->GetBody()->GetUserData().pointer);
+                blockB->outOfBounds = true;
+                blockB->knocked = true;
+            }
         }
 
         void PreSolve(b2Contact* contact, const b2Manifold* oldManifold) override {
             BeginContact(contact);
         }
+
+    private:
+        void queueBallRemoval(b2Body* ball) {
+            if (std::find(ballsToDestroy.begin(), ballsToDestroy.end(), ball) == ballsToDestroy.end()) {
+                ballsToDestroy.push_back(ball);
+            }
+        }
     };
+
+
+    b2Body* createBoundsSensor(b2World& world) {
+        b2BodyDef bodyDef;
+        bodyDef.position.Set(0.0f, 0.0f);
+        b2Body* body = world.CreateBody(&bodyDef);
+
+        b2PolygonShape shape;
+        b2FixtureDef fixtureDef;
+        fixtureDef.shape = &shape;
+        fixtureDef.isSensor = true;
+        fixtureDef.filter.categoryBits = kCategorySensor;
+        fixtureDef.filter.maskBits = kCategoryBall;
+
+        // 1. Left sensor wall (balls only)
+        shape.SetAsBox(0.5f, 30.0f, b2Vec2(-0.5f - kBallRadius, 15.0f), 0.0f);
+        body->CreateFixture(&fixtureDef);
+
+        // 2. Right sensor wall (balls only)
+        shape.SetAsBox(0.5f, 30.0f, b2Vec2(kWorldWidth + 0.5f + kBallRadius, 15.0f), 0.0f);
+        body->CreateFixture(&fixtureDef);
+
+        // 3. Bottom sensor pit (balls AND blocks)
+        fixtureDef.filter.maskBits = kCategoryBall | kCategoryBlock;
+        shape.SetAsBox(kWorldWidth + 20.0f, 0.5f, b2Vec2(kWorldWidth * 0.5f, -5.0f), 0.0f);
+        body->CreateFixture(&fixtureDef);
+
+        return body;
+    }
+
+
 
 
 }  // namespace
@@ -307,6 +375,8 @@ int main() {
             createStaticBox(world, kGroundX, kGroundY, kGroundHalfWidth, kGroundHalfHeight);
         b2Body* base = createStaticBox(world, kPivotX, kPivotY - kBaseHalfHeight, kBaseHalfWidth,
             kBaseHalfHeight);
+
+        b2Body* boundsSensor = createBoundsSensor(world);
 
         std::vector<Block> blocks;
         buildTower(world, blocks);
@@ -385,16 +455,14 @@ int main() {
                 }
             }
 
-            for (auto it = balls.begin(); it != balls.end();) {
-                b2Vec2 position = (*it)->GetPosition();
-                if (position.x < 0.0f || position.x > kWorldWidth || position.y < kRemoveBelowY) {
-                    world.DestroyBody(*it);
-                    it = balls.erase(it);
+            for (b2Body* deadBall : contactListener.ballsToDestroy) {
+                auto it = std::find(balls.begin(), balls.end(), deadBall);
+                if (it != balls.end()) {
+                    balls.erase(it);
                 }
-                else {
-                    ++it;
-                }
+                world.DestroyBody(deadBall);
             }
+            contactListener.ballsToDestroy.clear();
 
             bool won = knockedCount == static_cast<int>(blocks.size());
             bool lost = !won && shotsLeft == 0 && isSettled(world);
