@@ -34,30 +34,6 @@ namespace {
     constexpr float kGroundHalfHeight = 0.5f;
     constexpr float kGroundTop = kGroundY + kGroundHalfHeight;
 
-    constexpr float kPivotX = 3.0f;
-    constexpr float kPivotY = 2.5f;
-    constexpr float kBaseHalfWidth = 0.8f;
-    constexpr float kBaseHalfHeight = 0.5f;
-
-    constexpr float kBarrelLength = 1.5f;
-    constexpr float kBarrelHalfThickness = 0.25f;
-    constexpr float kMinAngle = 5.0f * kPi / 180.0f;
-    constexpr float kMaxAngle = 85.0f * kPi / 180.0f;
-    constexpr float kMuzzleSize = 8.0f;
-
-    constexpr float kMinPower = 20.0f;
-    constexpr float kMaxPower = 120.0f;
-    constexpr float kChargeRate = 50.0f;
-    constexpr float kBarX = 20.0f;
-    constexpr float kBarY = 580.0f;
-    constexpr float kBarWidth = 200.0f;
-    constexpr float kBarHeight = 16.0f;
-
-    constexpr float kBlockHalf = 0.4f;
-    constexpr float kTowerLeftX = 19.0f;
-    constexpr int kTowerColumns = 3;
-    constexpr int kTowerRows = 5;
-
     constexpr uint16 kCategoryGround = 0x0001;
     constexpr uint16 kCategoryBall = 0x0002;
     constexpr uint16 kCategoryBlock = 0x0004;
@@ -70,22 +46,6 @@ namespace {
     constexpr float kBallDensity = 3.0f;
 
     constexpr float kWorldWidth = kWindowWidth / kPixelsPerMeter;
-
-    constexpr float kPreviewStep = 0.02f;
-    constexpr int kPreviewDots = 100;
-    constexpr float kDotSize = 4.0f;
-
-    constexpr int kShots = 5;
-    constexpr float kAmmoX = 24.0f;
-    constexpr float kAmmoY = 24.0f;
-    constexpr float kAmmoSize = 14.0f;
-    constexpr float kAmmoStep = 24.0f;
-
-    struct Block {
-        b2Body* body;
-        bool knocked;
-        bool outOfBounds = false;
-    };
 
     float metersToPixelsX(float xMeters) {
         return xMeters * kPixelsPerMeter;
@@ -127,61 +87,6 @@ namespace {
 
         return body;
     }
-
-    b2Vec2 muzzlePoint(float angle) {
-        return b2Vec2(kPivotX + kBarrelLength * std::cos(angle),
-            kPivotY + kBarrelLength * std::sin(angle));
-    }
-
-    void drawBarrel(float angle) {
-        gfx::drawBox(metersToPixelsX(kPivotX + 0.5f * kBarrelLength * std::cos(angle)),
-            metersToPixelsY(kPivotY + 0.5f * kBarrelLength * std::sin(angle)),
-            kBarrelLength * kPixelsPerMeter, kBarrelHalfThickness * 2.0f * kPixelsPerMeter,
-            -angle, 0.6f, 0.6f, 0.7f);
-    }
-
-    void drawMuzzle(float angle) {
-        b2Vec2 muzzle = muzzlePoint(angle);
-        gfx::drawBox(metersToPixelsX(muzzle.x), metersToPixelsY(muzzle.y), kMuzzleSize, kMuzzleSize,
-            0.0f, 1.0f, 0.9f, 0.3f);
-    }
-
-    void drawPowerBar(float power) {
-        float fraction = (power - kMinPower) / (kMaxPower - kMinPower);
-        gfx::drawBox(kBarX + kBarWidth * 0.5f, kBarY, kBarWidth, kBarHeight, 0.0f, 0.25f, 0.25f,
-            0.3f);
-        gfx::drawBox(kBarX + kBarWidth * fraction * 0.5f, kBarY, kBarWidth * fraction, kBarHeight,
-            0.0f, 0.31f, 0.76f, 0.97f);
-    }
-
-    void buildTower(b2World& world, std::vector<Block>& blocks) {
-        blocks.reserve(kTowerColumns * kTowerRows);
-
-        for (int column = 0; column < kTowerColumns; ++column) {
-            for (int row = 0; row < kTowerRows; ++row) {
-                b2BodyDef bodyDef;
-                bodyDef.type = b2_dynamicBody;
-                bodyDef.position.Set(kTowerLeftX + (column + 0.5f) * 2.0f * kBlockHalf,
-                    kGroundTop + (row + 0.5f) * 2.0f * kBlockHalf);
-                b2Body* body = world.CreateBody(&bodyDef);
-
-                b2PolygonShape shape;
-                shape.SetAsBox(kBlockHalf, kBlockHalf);
-
-                b2FixtureDef fixtureDef;
-                fixtureDef.shape = &shape;
-                fixtureDef.density = 1.0f;
-                fixtureDef.friction = 0.6f;
-                fixtureDef.restitution = 0.0f;
-                fixtureDef.filter.categoryBits = kCategoryBlock;
-                body->CreateFixture(&fixtureDef);
-
-                blocks.push_back({ body, false, false });
-                body->GetUserData().pointer = reinterpret_cast<uintptr_t>(&blocks.back());
-            }
-        }
-    }
-
 
     // A line is a thin box laid between two points.
     void drawLine(b2Vec2 start, b2Vec2 end, float r, float g, float b) {
@@ -229,135 +134,6 @@ namespace {
         return body;
     }
 
-    void drawArcPreview(float angle, float power) {
-        b2Vec2 start = muzzlePoint(angle);
-        float vx = power * std::cos(angle);
-        float vy = power * std::sin(angle);
-        for (int i = 1; i <= kPreviewDots; ++i) {
-            float t = i * kPreviewStep;
-            float x = start.x + vx * t;
-            float y = start.y + vy * t - 0.5f * kGravity * t * t;
-            if (y < kGroundTop || x > kWorldWidth) {
-                break;
-            }
-            gfx::drawBox(metersToPixelsX(x), metersToPixelsY(y), kDotSize, kDotSize, 0.0f, 1.0f, 1.0f,
-                1.0f);
-        }
-    }
-
-    bool isSettled(const b2World& world) {
-        for (const b2Body* body = world.GetBodyList(); body; body = body->GetNext()) {
-            if (body->GetType() != b2_dynamicBody || !body->IsAwake()) {
-                continue;
-            }
-
-            uint16 category = body->GetFixtureList()->GetFilterData().categoryBits;
-            if (category == kCategoryBlock) {
-                const auto* block = reinterpret_cast<const Block*>(body->GetUserData().pointer);
-                if (block && block->outOfBounds) {
-                    continue;
-                }
-            }
-
-            return false;
-        }
-        return true;
-    }
-
-
-    class KnockContactListener : public b2ContactListener {
-    public:
-        std::vector<b2Body*> ballsToDestroy;
-
-        void BeginContact(b2Contact* contact) override {
-            b2Fixture* fixA = contact->GetFixtureA();
-            b2Fixture* fixB = contact->GetFixtureB();
-
-            uint16 catA = fixA->GetFilterData().categoryBits;
-            uint16 catB = fixB->GetFilterData().categoryBits;
-
-            // Case 1: Ball touches a Block
-            if (catA == kCategoryBall && catB == kCategoryBlock) {
-                auto* blockB = reinterpret_cast<Block*>(fixB->GetBody()->GetUserData().pointer);
-                blockB->knocked = true;
-            }
-            else if (catB == kCategoryBall && catA == kCategoryBlock) {
-                auto* blockA = reinterpret_cast<Block*>(fixA->GetBody()->GetUserData().pointer);
-                blockA->knocked = true;
-            }
-            // Case 2: Block touches another Block
-            else if (catA == kCategoryBlock && catB == kCategoryBlock) {
-                auto* blockA = reinterpret_cast<Block*>(fixA->GetBody()->GetUserData().pointer);
-                auto* blockB = reinterpret_cast<Block*>(fixB->GetBody()->GetUserData().pointer);
-                if (blockA->knocked || blockB->knocked) {
-                    blockA->knocked = true;
-                    blockB->knocked = true;
-                }
-            }
-            // Case 3: Ball touches the Out-of-Bounds Sensor
-            else if (catA == kCategoryBall && catB == kCategorySensor) {
-                queueBallRemoval(fixA->GetBody());
-            }
-            else if (catB == kCategoryBall && catA == kCategorySensor) {
-                queueBallRemoval(fixB->GetBody());
-            }
-			// Case 4: Block touches the Out-of-Bounds Sensor
-            else if (catA == kCategoryBlock && catB == kCategorySensor) {
-                auto* blockA = reinterpret_cast<Block*>(fixA->GetBody()->GetUserData().pointer);
-                blockA->outOfBounds = true;
-                blockA->knocked = true;
-            }
-            else if (catB == kCategoryBlock && catA == kCategorySensor) {
-                auto* blockB = reinterpret_cast<Block*>(fixB->GetBody()->GetUserData().pointer);
-                blockB->outOfBounds = true;
-                blockB->knocked = true;
-            }
-        }
-
-        void PreSolve(b2Contact* contact, const b2Manifold* oldManifold) override {
-            BeginContact(contact);
-        }
-
-    private:
-        void queueBallRemoval(b2Body* ball) {
-            if (std::find(ballsToDestroy.begin(), ballsToDestroy.end(), ball) == ballsToDestroy.end()) {
-                ballsToDestroy.push_back(ball);
-            }
-        }
-    };
-
-
-    b2Body* createBoundsSensor(b2World& world) {
-        b2BodyDef bodyDef;
-        bodyDef.position.Set(0.0f, 0.0f);
-        b2Body* body = world.CreateBody(&bodyDef);
-
-        b2PolygonShape shape;
-        b2FixtureDef fixtureDef;
-        fixtureDef.shape = &shape;
-        fixtureDef.isSensor = true;
-        fixtureDef.filter.categoryBits = kCategorySensor;
-        fixtureDef.filter.maskBits = kCategoryBall;
-
-        // 1. Left sensor wall (balls only)
-        shape.SetAsBox(0.5f, 30.0f, b2Vec2(-0.5f - kBallRadius, 15.0f), 0.0f);
-        body->CreateFixture(&fixtureDef);
-
-        // 2. Right sensor wall (balls only)
-        shape.SetAsBox(0.5f, 30.0f, b2Vec2(kWorldWidth + 0.5f + kBallRadius, 15.0f), 0.0f);
-        body->CreateFixture(&fixtureDef);
-
-        // 3. Bottom sensor pit (balls AND blocks)
-        fixtureDef.filter.maskBits = kCategoryBall | kCategoryBlock;
-        shape.SetAsBox(kWorldWidth + 20.0f, 0.5f, b2Vec2(kWorldWidth * 0.5f, -5.0f), 0.0f);
-        body->CreateFixture(&fixtureDef);
-
-        return body;
-    }
-
-
-
-
 }  // namespace
 
 int main() {
@@ -368,29 +144,13 @@ int main() {
         gfx::initDraw(kWindowWidth, kWindowHeight);
 
         b2World world(b2Vec2(0.0f, -kGravity));
-        KnockContactListener contactListener;
-        world.SetContactListener(&contactListener);
 
         b2Body* ground =
             createStaticBox(world, kGroundX, kGroundY, kGroundHalfWidth, kGroundHalfHeight);
-        b2Body* base = createStaticBox(world, kPivotX, kPivotY - kBaseHalfHeight, kBaseHalfWidth,
-            kBaseHalfHeight);
-
-        b2Body* boundsSensor = createBoundsSensor(world);
-
-        std::vector<Block> blocks;
-        buildTower(world, blocks);
 
         std::vector<b2Body*> balls;
 
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-
-        float power = kMinPower;
-        bool charging = false;
-        int shotsLeft = kShots;
-        bool gameOver = false;
-        bool rWasDown = false;
-        std::string lastTitle;
 
         double previousTime = glfwGetTime();
         float accumulator = 0.0f;
@@ -402,114 +162,17 @@ int main() {
             float frameTime = std::min(static_cast<float>(now - previousTime), kMaxFrameTime);
             previousTime = now;
 
-            bool rDown = window.isKeyPressed(GLFW_KEY_R);
-            if (rDown && !rWasDown) {
-                for (const Block& block : blocks) {
-                    world.DestroyBody(block.body);
-                }
-                blocks.clear();
-                buildTower(world, blocks);
-                for (b2Body* ball : balls) {
-                    world.DestroyBody(ball);
-                }
-                balls.clear();
-                shotsLeft = kShots;
-                gameOver = false;
-                charging = false;
-                power = kMinPower;
-            }
-            rWasDown = rDown;
-
-            double mouseX = 0.0, mouseY = 0.0;
-            window.getCursorPosition(mouseX, mouseY);
-            float dx = pixelsToMetersX(static_cast<float>(mouseX)) - kPivotX;
-            float dy = pixelsToMetersY(static_cast<float>(mouseY)) - kPivotY;
-            float aimAngle = std::clamp(std::atan2(dy, dx), kMinAngle, kMaxAngle);
-
-            bool mouseDown = window.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
-            if (mouseDown && shotsLeft > 0 && !gameOver) {
-                charging = true;
-                power = std::min(power + kChargeRate * frameTime, kMaxPower);
-            }
-            else if (charging && !mouseDown) {
-                b2Body* ball = createBall(world, muzzlePoint(aimAngle));
-                float impulse = ball->GetMass() * power;
-                ball->ApplyLinearImpulseToCenter(
-                    b2Vec2(impulse * std::cos(aimAngle), impulse * std::sin(aimAngle)), true);
-                balls.push_back(ball);
-                --shotsLeft;
-                charging = false;
-                power = kMinPower;
-            }
-
             accumulator += frameTime;
             while (accumulator >= kStepDt) {
                 world.Step(kStepDt, kVelocityIterations, kPositionIterations);
                 accumulator -= kStepDt;
             }
 
-            int knockedCount = 0;
-            for (const Block& block : blocks) {
-                if (block.knocked) {
-                    ++knockedCount;
-                }
-            }
-
-            for (b2Body* deadBall : contactListener.ballsToDestroy) {
-                auto it = std::find(balls.begin(), balls.end(), deadBall);
-                if (it != balls.end()) {
-                    balls.erase(it);
-                }
-                world.DestroyBody(deadBall);
-            }
-            contactListener.ballsToDestroy.clear();
-
-            bool won = knockedCount == static_cast<int>(blocks.size());
-            bool lost = !won && shotsLeft == 0 && isSettled(world);
-            gameOver = won || lost;
-            if (gameOver) {
-                charging = false;
-                power = kMinPower;
-            }
-
-            std::string title = std::string("Cannon | shots: ") + std::to_string(shotsLeft) +
-                " | knocked: " + std::to_string(knockedCount) + "/" +
-                std::to_string(blocks.size());
-            if (won) {
-                title += " | WIN";
-            }
-            else if (lost) {
-                title += " | LOSE";
-            }
-            if (title != lastTitle) {
-                glfwSetWindowTitle(glfwGetCurrentContext(), title.c_str());
-                lastTitle = title;
-            }
 
             glClear(GL_COLOR_BUFFER_BIT);
 
             drawBoxBody(ground, kGroundHalfWidth, kGroundHalfHeight, 0.35f, 0.35f, 0.4f);
-            drawBoxBody(base, kBaseHalfWidth, kBaseHalfHeight, 0.35f, 0.35f, 0.4f);
-            drawBarrel(aimAngle);
-            drawMuzzle(aimAngle);
-            drawPowerBar(power);
-            drawArcPreview(aimAngle, power);
-            for (int i = 0; i < shotsLeft; ++i) {
-                gfx::drawBox(kAmmoX + i * kAmmoStep, kAmmoY, kAmmoSize, kAmmoSize, 0.0f, 1.0f,
-                    0.4f, 0.4f);
-            }
-            for (const Block& block : blocks) {
-                float r = 1.0f, g = 0.6f, b = 0.2f;
-                if (block.knocked) {
-                    r = 0.2f, g = 1.0f, b = 0.6f;
-                }
-                if (!block.body->IsAwake()) {
-                    r *= 0.5f;
-                    g *= 0.5f;
-                    b *= 0.5;
-                }
-                drawBoxBody(block.body, kBlockHalf, kBlockHalf, r, g, b);
-            }
+
             for (const b2Body* ball : balls) {
                 drawCircle(ball->GetPosition(), kBallRadius, 1.0f, 0.4f, 0.4f);
             }
