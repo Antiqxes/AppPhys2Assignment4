@@ -16,8 +16,8 @@
 #include "draw.h"
 
 namespace {
-    constexpr int kWindowWidth = 800;
-    constexpr int kWindowHeight = 600;
+    constexpr int kWindowWidth = 1200;
+    constexpr int kWindowHeight = 900;
 
     constexpr float kPixelsPerMeter = 32.0f;
     // Underwater net gravity (~20% of Earth's 9.81 m/s^2)
@@ -33,9 +33,9 @@ namespace {
     constexpr int kVelocityIterations = 8;
     constexpr int kPositionIterations = 3;
 
-    constexpr float kGroundX = 12.5f;
+    constexpr float kGroundX = 18.75f;
     constexpr float kGroundY = 1.0f;
-    constexpr float kGroundHalfWidth = 12.5f;
+    constexpr float kGroundHalfWidth = 18.75f;
     constexpr float kGroundHalfHeight = 0.5f;
     constexpr float kGroundTop = kGroundY + kGroundHalfHeight;
 
@@ -148,6 +148,11 @@ int main() {
         gfx::initDraw(kWindowWidth, kWindowHeight);
 
         b2World world(b2Vec2(0.0f, -kGravity));
+
+        // Place the ground at the horizontal center of the window using your helper
+        float groundCenterX = pixelsToMetersX(kWindowWidth * 0.5f);
+        float groundHalfWidth = pixelsToMetersX(kWindowWidth * 0.5f); // Full window width
+        float groundY = pixelsToMetersY(kWindowHeight - 32.0f);       // 32px above the bottom edge
 
         b2Body* ground =
             createStaticBox(world, kGroundX, kGroundY, kGroundHalfWidth, kGroundHalfHeight);
