@@ -20,8 +20,13 @@ namespace {
     constexpr int kWindowHeight = 600;
 
     constexpr float kPixelsPerMeter = 32.0f;
-    constexpr float kGravity = 9.81f;
+    // Underwater net gravity (~20% of Earth's 9.81 m/s^2)
+    constexpr float kGravity = 2.0f;
     constexpr float kPi = 3.14159265f;
+
+    // Default water drag for all dynamic bodies
+    constexpr float kWaterLinearDamping = 2.5f;
+    constexpr float kWaterAngularDamping = 5.0f;
 
     constexpr float kStepDt = 1.0f / 60.0f;
     constexpr float kMaxFrameTime = 0.05f;
@@ -114,10 +119,9 @@ namespace {
         b2BodyDef bodyDef;
         bodyDef.type = b2_dynamicBody;
         bodyDef.position = position;
-        // Without this, a fast ball can jump over a thin body in one step.
         bodyDef.bullet = true;
-        // Box2D has no rolling friction. Without this the ball rolls forever and never sleeps.
-        bodyDef.angularDamping = 5.0f;
+        bodyDef.linearDamping = kWaterLinearDamping;   // Water resistance
+        bodyDef.angularDamping = kWaterAngularDamping; // Rotational drag
         b2Body* body = world.CreateBody(&bodyDef);
 
         b2CircleShape shape;
@@ -149,6 +153,8 @@ int main() {
             createStaticBox(world, kGroundX, kGroundY, kGroundHalfWidth, kGroundHalfHeight);
 
         std::vector<b2Body*> balls;
+        // Spawn a single test ball near the top center of the screen (25m wide x 18.75m tall)
+        balls.push_back(createBall(world, b2Vec2(kWorldWidth * 0.5f, 15.0f)));
 
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
