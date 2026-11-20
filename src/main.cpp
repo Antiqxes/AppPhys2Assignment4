@@ -44,8 +44,8 @@ namespace {
     constexpr uint16 kCategoryBall = 0x0002;
     constexpr uint16 kCategoryBlock = 0x0004;
     constexpr uint16 kCategorySensor = 0x0008;
+    constexpr uint16 kCategoryLine = 0x0010;
 
-    constexpr float kLineThickness = 2.0f;
     constexpr int kCircleSegments = 24;
 
     constexpr float kBallRadius = 0.2f;
@@ -59,6 +59,14 @@ namespace {
     constexpr float kMagnetPullStrength = 35.0f; // Base pull force in Newtons
     constexpr float kMagnetSnapDist = 0.65f;     // Distance at which ball locks onto magnet
 
+    constexpr float kRodAnchorX = 150.0f / kPixelsPerMeter; // 4.6875f meters from left edge
+    constexpr float kRodAnchorY = kWindowHeight / kPixelsPerMeter; // 28.125f meters (top edge)
+    constexpr float kLineThickness = 2.0f;
+    constexpr int kLineSegments = 16;
+    constexpr float kLineSegmentHalfLen = 0.35f;
+    constexpr float kLineSegmentHalfThick = 0.04f;
+    constexpr float kMaxLineLength = kLineSegments * (kLineSegmentHalfLen * 2.0f);
+
 
     struct Magnet {
         b2Body* body = nullptr;
@@ -69,6 +77,12 @@ namespace {
 
     struct BodyData {
         bool isMagnetic = false;
+    };
+
+    struct FishingLine {
+        b2Body* anchor = nullptr;
+        std::vector<b2Body*> segments;
+        b2DistanceJoint* tensionJoint = nullptr;
     };
 
     constexpr float kWorldWidth = kWindowWidth / kPixelsPerMeter;
@@ -136,6 +150,19 @@ namespace {
         }
     }
 
+    void drawFishingLine(const FishingLine& line, const b2Body* magnetBody) {
+        if (line.segments.empty()) return;
+
+        b2Vec2 prevPos = line.anchor->GetPosition();
+        for (const b2Body* seg : line.segments) {
+            b2Vec2 currPos = seg->GetPosition();
+            drawLine(prevPos, currPos, 0.85f, 0.9f, 0.95f);
+            prevPos = currPos;
+        }
+        drawLine(prevPos, magnetBody->GetPosition(), 0.85f, 0.9f, 0.95f);
+    }
+
+
     b2BodyDef makeUnderwaterBodyDef(b2Vec2 position, float gravityScale = 1.0f) {
         b2BodyDef def;
         def.type = b2_dynamicBody;
@@ -169,8 +196,11 @@ namespace {
 
     Magnet createMagnet(b2World& world, b2Vec2 startPos) {
         b2BodyDef bodyDef;
-        bodyDef.type = b2_kinematicBody;
+        bodyDef.type = b2_dynamicBody;   // Collides with static ground & walls
         bodyDef.position = startPos;
+        bodyDef.gravityScale = 0.0f;     // Neutrally buoyant (won't sink)
+        bodyDef.fixedRotation = true;    // Keeps magnet upright when carrying balls
+        bodyDef.bullet = true;           // Prevents tunneling at max speed
         b2Body* body = world.CreateBody(&bodyDef);
 
         b2CircleShape shape;
@@ -178,7 +208,8 @@ namespace {
 
         b2FixtureDef fixtureDef;
         fixtureDef.shape = &shape;
-        fixtureDef.friction = 0.5f;
+        fixtureDef.density = 5.0f;       // Heavy enough not to get pushed around easily by small balls
+        fixtureDef.friction = 0.2f;      // Low friction so it slides smoothly along ground/walls
         fixtureDef.filter.categoryBits = kCategoryBall;
         body->CreateFixture(&fixtureDef);
 
@@ -292,6 +323,73 @@ namespace {
         }
     }
 
+    FishingLine createFishingLine(b2World& world, b2Vec2 anchorPos, b2Body* magnetBody) {
+        FishingLine line;
+
+        // 1. Static rod/boat anchor at the top of the screen
+        b2BodyDef anchorDef;
+        anchorDef.position = anchorPos;
+        line.anchor = world.CreateBody(&anchorDef);
+
+        // 2. Shared shape & filter for thin underwater line segments
+        b2PolygonShape segShape;
+        segShape.SetAsBox(kLineSegmentHalfThick, kLineSegmentHalfLen);
+
+        b2FixtureDef segFixture;
+        segFixture.shape = &segShape;
+        segFixture.density = 0.5f;   // Lightweight so it drifts easily in water
+        segFixture.friction = 0.1f;
+        segFixture.filter.categoryBits = kCategoryLine;
+        // Collide only with ground/walls—ignore magnet, balls, and other line links
+        segFixture.filter.maskBits = kCategoryGround;
+
+        b2Body* prevBody = line.anchor;
+        b2Vec2 prevAnchorLocal(0.0f, 0.0f);
+
+        // 3. Build the chain of segments connected by RevoluteJoints
+        for (int i = 0; i < kLineSegments; ++i) {
+            float segCenterY = anchorPos.y - (i * 2.0f + 1.0f) * kLineSegmentHalfLen;
+
+            // Low gravityScale (0.2f) so the line floats/billows gently underwater
+            b2BodyDef segDef = makeUnderwaterBodyDef(b2Vec2(anchorPos.x, segCenterY), 0.2f);
+            segDef.linearDamping = 4.0f; // Extra water drag for smooth billowing
+            b2Body* segment = world.CreateBody(&segDef);
+            segment->CreateFixture(&segFixture);
+            line.segments.push_back(segment);
+
+            b2RevoluteJointDef revDef;
+            revDef.bodyA = prevBody;
+            revDef.bodyB = segment;
+            revDef.localAnchorA = prevAnchorLocal;
+            revDef.localAnchorB.Set(0.0f, kLineSegmentHalfLen); // Top end of current segment
+            revDef.collideConnected = false;
+            world.CreateJoint(&revDef);
+
+            prevBody = segment;
+            prevAnchorLocal.Set(0.0f, -kLineSegmentHalfLen); // Bottom end for next link
+        }
+
+        // 4. Attach the bottom of the last segment to the center of the magnet
+        b2RevoluteJointDef magnetRevDef;
+        magnetRevDef.bodyA = prevBody;
+        magnetRevDef.bodyB = magnetBody;
+        magnetRevDef.localAnchorA = prevAnchorLocal;
+        magnetRevDef.localAnchorB.Set(0.0f, 0.0f);
+        magnetRevDef.collideConnected = false;
+        world.CreateJoint(&magnetRevDef);
+
+        // 5. Add a slack-allowed DistanceJoint so heavy pulls never stretch the chain apart
+        b2DistanceJointDef distDef;
+        distDef.Initialize(line.anchor, magnetBody, anchorPos, magnetBody->GetPosition());
+        distDef.minLength = 0.0f;            // Allows line to go completely slack
+        distDef.maxLength = kMaxLineLength;  // Stops magnet cleanly at full line length
+        distDef.stiffness = 0.0f;            // Rigid stop at maxLength (no bungee bounce)
+        line.tensionJoint = static_cast<b2DistanceJoint*>(world.CreateJoint(&distDef));
+
+        return line;
+    }
+
+
 }  // namespace
 
 int main() {
@@ -325,7 +423,8 @@ int main() {
         spawnBall(b2Vec2(kWorldWidth * 0.45f, 15.0f), true);
         spawnBall(b2Vec2(kWorldWidth * 0.55f, 15.0f), false);
 
-        Magnet magnet = createMagnet(world, b2Vec2(kGroundX, 14.0f));
+        Magnet magnet = createMagnet(world, b2Vec2(kRodAnchorX, 14.0f));
+        FishingLine fishingLine = createFishingLine(world, b2Vec2(kRodAnchorX, kRodAnchorY), magnet.body);
 
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
@@ -345,6 +444,7 @@ int main() {
                 applyMagnetField(world, magnet, balls, attachedJoints, input.magnetActive);
                 world.Step(kStepDt, kVelocityIterations, kPositionIterations);
                 magnet.pos = magnet.body->GetPosition();
+                magnet.vel = magnet.body->GetLinearVelocity();
                 accumulator -= kStepDt;
             }
 
@@ -366,6 +466,7 @@ int main() {
             if (input.magnetActive) {
                 drawCircle(magnet.body->GetPosition(), kMagnetPullRadius, 0.2f, 0.5f, 0.8f);
             }
+            drawFishingLine(fishingLine, magnet.body);
             drawCircle(magnet.body->GetPosition(), kMagnetRadius, 0.3f, 0.7f, 1.0f);
 
 
