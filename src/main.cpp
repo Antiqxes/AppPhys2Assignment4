@@ -9,6 +9,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include<deque>
 
 #include "core/glfw_context.h"
 #include "core/input.h"
@@ -54,12 +55,20 @@ namespace {
     constexpr float kMagnetAccel = 15.0f;     // Acceleration in m/s^2
     constexpr float kMagnetDrag = 4.0f;       // Water drag deceleration when keys are released
     constexpr float kMagnetMaxSpeed = 8.0f;   // Terminal velocity in m/s
+    constexpr float kMagnetPullRadius = 6.0f;    // Maximum pull range in meters
+    constexpr float kMagnetPullStrength = 35.0f; // Base pull force in Newtons
+    constexpr float kMagnetSnapDist = 0.65f;     // Distance at which ball locks onto magnet
+
 
     struct Magnet {
         b2Body* body = nullptr;
         b2Vec2 pos{ 0.0f, 0.0f };
         b2Vec2 vel{ 0.0f, 0.0f };
         b2Vec2 acc{ 0.0f, 0.0f };
+    };
+
+    struct BodyData {
+        bool isMagnetic = false;
     };
 
     constexpr float kWorldWidth = kWindowWidth / kPixelsPerMeter;
@@ -137,9 +146,10 @@ namespace {
         return def;
     }
 
-    b2Body* createBall(b2World& world, b2Vec2 position) {
+    b2Body* createBall(b2World& world, b2Vec2 position, BodyData* data) {
         b2BodyDef bodyDef = makeUnderwaterBodyDef(position);
         bodyDef.bullet = true;
+        bodyDef.userData.pointer = reinterpret_cast<uintptr_t>(data);
 
         b2Body* body = world.CreateBody(&bodyDef);
 
@@ -201,7 +211,86 @@ namespace {
         magnet.body->SetLinearVelocity(magnet.vel);
     }
 
+    class MagnetRayCastCallback : public b2RayCastCallback {
+    public:
+        bool blocked = false;
 
+        float ReportFixture(b2Fixture* fixture, const b2Vec2& point,
+            const b2Vec2& normal, float fraction) override {
+            if (fixture->IsSensor()) {
+                return -1.0f; // Ignore sensors
+            }
+
+            if (fixture->GetFilterData().categoryBits == kCategoryGround) {
+                blocked = true;
+                return 0.0f; // Stop immediately on wall/ground hit
+            }
+
+            return -1.0f; // Ignore other dynamic bodies and continue
+        }
+    };
+
+    void applyMagnetField(b2World& world, Magnet& magnet, const std::vector<b2Body*>& balls,
+        std::vector<b2Joint*>& attachedJoints, bool active) {
+        // 1. Release all attached balls if magnet is turned off
+        if (!active) {
+            for (b2Joint* joint : attachedJoints) {
+                world.DestroyJoint(joint);
+            }
+            attachedJoints.clear();
+            return;
+        }
+
+        b2Vec2 magnetPos = magnet.body->GetPosition();
+
+        for (b2Body* ball : balls) {
+            // 2. Check UserData to see if this ball is magnetic
+            auto* data = reinterpret_cast<BodyData*>(ball->GetUserData().pointer);
+            if (!data || !data->isMagnetic) {
+                continue;
+            }
+
+            // Skip balls already welded to the magnet
+            bool alreadyAttached = false;
+            for (b2Joint* joint : attachedJoints) {
+                if (joint->GetBodyB() == ball) {
+                    alreadyAttached = true;
+                    break;
+                }
+            }
+            if (alreadyAttached) continue;
+
+            b2Vec2 ballPos = ball->GetPosition();
+            b2Vec2 toMagnet = magnetPos - ballPos;
+            float dist = toMagnet.Length();
+
+            if (dist >= kMagnetPullRadius || dist <= 0.001f) {
+                continue;
+            }
+
+            // 3. Cast a ray from magnet to ball to make sure no wall blocks the pull
+            MagnetRayCastCallback rayCallback;
+            world.RayCast(&rayCallback, magnetPos, ballPos);
+            if (rayCallback.blocked) {
+                continue;
+            }
+
+            // 4. Snap onto magnet when close enough
+            if (dist <= kMagnetSnapDist) {
+                b2WeldJointDef weldDef;
+                weldDef.Initialize(magnet.body, ball, ballPos);
+                weldDef.collideConnected = false;
+                attachedJoints.push_back(world.CreateJoint(&weldDef));
+                continue;
+            }
+
+            // 5. Apply smooth radial pull force
+            toMagnet.Normalize();
+            float falloff = 1.0f - (dist / kMagnetPullRadius);
+            b2Vec2 force = (kMagnetPullStrength * falloff) * toMagnet;
+            ball->ApplyForceToCenter(force, true);
+        }
+    }
 
 }  // namespace
 
@@ -222,9 +311,19 @@ int main() {
         b2Body* ground =
             createStaticBox(world, kGroundX, kGroundY, kGroundHalfWidth, kGroundHalfHeight);
 
+        std::deque<BodyData> bodyDataList;
         std::vector<b2Body*> balls;
-        // Spawn a single test ball near the top center of the screen (25m wide x 18.75m tall)
-        balls.push_back(createBall(world, b2Vec2(kWorldWidth * 0.5f, 15.0f)));
+        std::vector<b2Joint*> attachedJoints;
+
+        // Helper lambda to spawn a ball with clean memory ownership
+        auto spawnBall = [&](b2Vec2 pos, bool isMagnetic) {
+            bodyDataList.push_back(BodyData{ .isMagnetic = isMagnetic });
+            balls.push_back(createBall(world, pos, &bodyDataList.back()));
+            };
+
+        // Spawn one magnetic ball (red) and one non-magnetic ball (gray) to test
+        spawnBall(b2Vec2(kWorldWidth * 0.45f, 15.0f), true);
+        spawnBall(b2Vec2(kWorldWidth * 0.55f, 15.0f), false);
 
         Magnet magnet = createMagnet(world, b2Vec2(kGroundX, 14.0f));
 
@@ -243,6 +342,7 @@ int main() {
             accumulator += frameTime;
             while (accumulator >= kStepDt) {
                 updateMagnetVerlet(magnet, input, kStepDt);
+                applyMagnetField(world, magnet, balls, attachedJoints, input.magnetActive);
                 world.Step(kStepDt, kVelocityIterations, kPositionIterations);
                 magnet.pos = magnet.body->GetPosition();
                 accumulator -= kStepDt;
@@ -253,9 +353,21 @@ int main() {
             drawBoxBody(ground, kGroundHalfWidth, kGroundHalfHeight, 0.35f, 0.35f, 0.4f);
 
             for (const b2Body* ball : balls) {
-                drawCircle(ball->GetPosition(), kBallRadius, 1.0f, 0.4f, 0.4f);
+                auto* data = reinterpret_cast<BodyData*>(ball->GetUserData().pointer);
+                if (data && data->isMagnetic) {
+                    drawCircle(ball->GetPosition(), kBallRadius, 1.0f, 0.35f, 0.35f); // Red = magnetic
+                }
+                else {
+                    drawCircle(ball->GetPosition(), kBallRadius, 0.6f, 0.6f, 0.65f);  // Gray = non-magnetic
+                }
+            }
+
+            // In your render section:
+            if (input.magnetActive) {
+                drawCircle(magnet.body->GetPosition(), kMagnetPullRadius, 0.2f, 0.5f, 0.8f);
             }
             drawCircle(magnet.body->GetPosition(), kMagnetRadius, 0.3f, 0.7f, 1.0f);
+
 
             window.swapBuffers();
             window.pollEvents();
