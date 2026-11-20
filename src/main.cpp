@@ -45,6 +45,7 @@ namespace {
     constexpr uint16 kCategoryBlock = 0x0004;
     constexpr uint16 kCategorySensor = 0x0008;
     constexpr uint16 kCategoryLine = 0x0010;
+    constexpr uint16 kCategorySand = 0x0020;
 
     constexpr int kCircleSegments = 24;
 
@@ -58,21 +59,35 @@ namespace {
     constexpr float kMagnetPullRadius = 6.0f;    // Maximum pull range in meters
     constexpr float kMagnetPullStrength = 35.0f; // Base pull force in Newtons
     constexpr float kMagnetSnapDist = 0.65f;     // Distance at which ball locks onto magnet
+    constexpr float kMagnetPuntImpulse = 14.0f; // Launch strength when punting/repelling
+
+    constexpr float kMagnetConeHalfAngleDeg = 15.0f;
+    constexpr float kMagnetConeHalfAngleRad = kMagnetConeHalfAngleDeg * (kPi / 180.0f);
+    constexpr int kMagnetRayCount = 7; // 7 rays fanned across 30° (every 5°)
 
     constexpr float kRodAnchorX = 150.0f / kPixelsPerMeter; // 4.6875f meters from left edge
     constexpr float kRodAnchorY = kWindowHeight / kPixelsPerMeter; // 28.125f meters (top edge)
     constexpr float kLineThickness = 2.0f;
-    constexpr int kLineSegments = 16;
+    constexpr int kLineSegments = 36;
     constexpr float kLineSegmentHalfLen = 0.35f;
     constexpr float kLineSegmentHalfThick = 0.04f;
     constexpr float kMaxLineLength = kLineSegments * (kLineSegmentHalfLen * 2.0f);
 
+    constexpr int kSandNodeCount = 75;            // 1 node every 0.5m across 37.5m width
+    constexpr float kSandRestY = 3.0f;            // Resting height of the sand surface (meters)
+    constexpr float kSandFloorY = 0.5f;           // Static bottom floor center Y
+    constexpr float kSandNodeRadius = 0.28f;      // Slightly larger than half-spacing so balls can't slip through
+    constexpr float kSandLinearDamping = 9.0f;    // High damping so sand settles like wet silt, not water
+    constexpr float kSandSpringHz = 2.5f;         // Neighbor stiffness (lower = softer, deeper dents)
+    constexpr float kSandDampingRatio = 0.9f;     // Prevents trampoline bouncing
+    constexpr float kSandRestoreStiffness = 12.0f; // Higher = levels out faster, Lower = lingers longer
 
     struct Magnet {
         b2Body* body = nullptr;
         b2Vec2 pos{ 0.0f, 0.0f };
         b2Vec2 vel{ 0.0f, 0.0f };
         b2Vec2 acc{ 0.0f, 0.0f };
+        b2Vec2 aimDir{ 1.0f, 0.0f }; // Normalized direction pointing toward mouse
     };
 
     struct BodyData {
@@ -83,6 +98,11 @@ namespace {
         b2Body* anchor = nullptr;
         std::vector<b2Body*> segments;
         b2DistanceJoint* tensionJoint = nullptr;
+    };
+
+    struct SandBed {
+        b2Body* container = nullptr; // Static bottom, left, and right walls
+        std::vector<b2Body*> nodes;  // Dynamic top surface nodes
     };
 
     constexpr float kWorldWidth = kWindowWidth / kPixelsPerMeter;
@@ -162,6 +182,35 @@ namespace {
         drawLine(prevPos, magnetBody->GetPosition(), 0.85f, 0.9f, 0.95f);
     }
 
+    void drawSandBed(const SandBed& bed) {
+        if (bed.nodes.size() < 2) return;
+
+        float bottomPxY = metersToPixelsY(kSandFloorY);
+        float colWidthPx = (kWorldWidth / static_cast<float>(kSandNodeCount - 1)) * kPixelsPerMeter + 1.0f;
+
+        // 1. Fill sand columns from the TOP edge of each node circle down to the static bottom
+        for (const b2Body* node : bed.nodes) {
+            b2Vec2 pos = node->GetPosition();
+            float surfaceY = pos.y + kSandNodeRadius; // Match physical top of circle
+            float topPxY = metersToPixelsY(surfaceY);
+            float heightPx = std::max(0.0f, bottomPxY - topPxY);
+            float centerPxY = topPxY + heightPx * 0.5f;
+
+            gfx::drawBox(metersToPixelsX(pos.x), centerPxY, colWidthPx, heightPx,
+                0.0f, 0.76f, 0.65f, 0.42f);
+        }
+
+        // 2. Draw the surface crust line along the actual physical contact height
+        for (size_t i = 0; i < bed.nodes.size() - 1; ++i) {
+            b2Vec2 p1 = bed.nodes[i]->GetPosition();
+            b2Vec2 p2 = bed.nodes[i + 1]->GetPosition();
+            p1.y += kSandNodeRadius;
+            p2.y += kSandNodeRadius;
+            drawLine(p1, p2, 0.88f, 0.78f, 0.52f);
+        }
+    }
+
+
 
     b2BodyDef makeUnderwaterBodyDef(b2Vec2 position, float gravityScale = 1.0f) {
         b2BodyDef def;
@@ -220,16 +269,25 @@ namespace {
     }
 
     void updateMagnetVerlet(Magnet& magnet, const gfx::InputState& input, float dt) {
-        // 1. Velocity Verlet Step 1: Half-step velocity & full-step position
+        // 1. Update aim direction toward mouse cursor
+        b2Vec2 mouseWorldPos(pixelsToMetersX(input.mousePixelPos.x),
+            pixelsToMetersY(input.mousePixelPos.y));
+        b2Vec2 toMouse = mouseWorldPos - magnet.body->GetPosition();
+        if (toMouse.LengthSquared() > 0.0001f) {
+            toMouse.Normalize();
+            magnet.aimDir = toMouse;
+        }
+
+        // 2. Velocity Verlet Step 1: Half-step velocity & full-step position
         b2Vec2 halfVel = magnet.vel + 0.5f * dt * magnet.acc;
         magnet.pos += dt * halfVel;
 
-        // 2. Compute new acceleration (WASD thrust minus water drag)
+        // 3. Compute new acceleration (WASD thrust minus water drag)
         b2Vec2 thrust = kMagnetAccel * input.move;
         b2Vec2 drag = -kMagnetDrag * halfVel;
         b2Vec2 newAcc = thrust + drag;
 
-        // 3. Velocity Verlet Step 2: Complete velocity update & clamp to max speed
+        // 4. Velocity Verlet Step 2: Complete velocity update & clamp to max speed
         magnet.vel = halfVel + 0.5f * dt * newAcc;
         magnet.acc = newAcc;
 
@@ -238,13 +296,15 @@ namespace {
             magnet.vel *= (kMagnetMaxSpeed / speed);
         }
 
-        // 4. Sync velocity with Box2D body
+        // 5. Sync velocity with Box2D body
         magnet.body->SetLinearVelocity(magnet.vel);
     }
 
-    class MagnetRayCastCallback : public b2RayCastCallback {
+
+    class MagnetConeRayCallback : public b2RayCastCallback {
     public:
-        bool blocked = false;
+        b2Body* hitMagneticBody = nullptr;
+        float closestFraction = 1.0f;
 
         float ReportFixture(b2Fixture* fixture, const b2Vec2& point,
             const b2Vec2& normal, float fraction) override {
@@ -252,19 +312,127 @@ namespace {
                 return -1.0f; // Ignore sensors
             }
 
-            if (fixture->GetFilterData().categoryBits == kCategoryGround) {
-                blocked = true;
-                return 0.0f; // Stop immediately on wall/ground hit
+            b2Body* body = fixture->GetBody();
+            uint16 category = fixture->GetFilterData().categoryBits;
+
+            // Walls block the ray completely at this distance
+            if (category == kCategoryGround) {
+                hitMagneticBody = nullptr;
+                closestFraction = fraction;
+                return fraction;
             }
 
-            return -1.0f; // Ignore other dynamic bodies and continue
+            // Record magnetic bodies and clip the ray to their surface
+            auto* data = reinterpret_cast<BodyData*>(body->GetUserData().pointer);
+            if (data && data->isMagnetic) {
+                hitMagneticBody = body;
+                closestFraction = fraction;
+                return fraction;
+            }
+
+            return -1.0f; // Ignore non-magnetic balls, sand, and fishing line
         }
     };
 
-    void applyMagnetField(b2World& world, Magnet& magnet, const std::vector<b2Body*>& balls,
-        std::vector<b2Joint*>& attachedJoints, bool active) {
-        // 1. Release all attached balls if magnet is turned off
+    void drawMagnetCone(const Magnet& magnet, bool active) {
+        b2Vec2 origin = magnet.body->GetPosition();
+        float baseAngle = std::atan2(magnet.aimDir.y, magnet.aimDir.x);
+
         if (!active) {
+            // Subtle aim indicator when not pulling
+            drawLine(origin, origin + 1.0f * magnet.aimDir, 0.4f, 0.6f, 0.7f);
+            return;
+        }
+
+        float leftAngle = baseAngle + kMagnetConeHalfAngleRad;
+        float rightAngle = baseAngle - kMagnetConeHalfAngleRad;
+
+        b2Vec2 leftEnd(origin.x + kMagnetPullRadius * std::cos(leftAngle),
+            origin.y + kMagnetPullRadius * std::sin(leftAngle));
+        b2Vec2 rightEnd(origin.x + kMagnetPullRadius * std::cos(rightAngle),
+            origin.y + kMagnetPullRadius * std::sin(rightAngle));
+
+        // 1. Draw the two outer cone side edges
+        drawLine(origin, leftEnd, 0.25f, 0.65f, 0.95f);
+        drawLine(origin, rightEnd, 0.25f, 0.65f, 0.95f);
+
+        // 2. Draw a curved arc connecting the outer bounds of the cone
+        constexpr int kArcSegments = 8;
+        for (int i = 0; i < kArcSegments; ++i) {
+            float t1 = static_cast<float>(i) / static_cast<float>(kArcSegments);
+            float t2 = static_cast<float>(i + 1) / static_cast<float>(kArcSegments);
+            float a1 = rightAngle + t1 * (leftAngle - rightAngle);
+            float a2 = rightAngle + t2 * (leftAngle - rightAngle);
+
+            b2Vec2 p1(origin.x + kMagnetPullRadius * std::cos(a1),
+                origin.y + kMagnetPullRadius * std::sin(a1));
+            b2Vec2 p2(origin.x + kMagnetPullRadius * std::cos(a2),
+                origin.y + kMagnetPullRadius * std::sin(a2));
+            drawLine(p1, p2, 0.25f, 0.65f, 0.95f);
+        }
+    }
+
+
+    std::vector<b2Body*> findMagneticTargetsInCone(b2World& world, const Magnet& magnet) {
+        std::vector<b2Body*> targets;
+        b2Vec2 origin = magnet.body->GetPosition();
+        float baseAngle = std::atan2(magnet.aimDir.y, magnet.aimDir.x);
+
+        for (int i = 0; i < kMagnetRayCount; ++i) {
+            float t = -1.0f + 2.0f * static_cast<float>(i) / static_cast<float>(kMagnetRayCount - 1);
+            float rayAngle = baseAngle + t * kMagnetConeHalfAngleRad;
+
+            b2Vec2 endPoint(origin.x + kMagnetPullRadius * std::cos(rayAngle),
+                origin.y + kMagnetPullRadius * std::sin(rayAngle));
+
+            MagnetConeRayCallback callback;
+            world.RayCast(&callback, origin, endPoint);
+
+            if (callback.hitMagneticBody != nullptr) {
+                if (std::find(targets.begin(), targets.end(), callback.hitMagneticBody) == targets.end()) {
+                    targets.push_back(callback.hitMagneticBody);
+                }
+            }
+        }
+
+        return targets;
+    }
+
+
+    void applyMagnetField(b2World& world, Magnet& magnet,
+        std::vector<b2Joint*>& attachedJoints, const gfx::InputState& input) {
+        b2Vec2 magnetPos = magnet.body->GetPosition();
+
+        // 1. PUNT / REPEL (Right Click or E)
+        if (input.repelTriggered) {
+            if (!attachedJoints.empty()) {
+                for (b2Joint* joint : attachedJoints) {
+                    b2Body* heldBody = joint->GetBodyB();
+                    world.DestroyJoint(joint);
+
+                    // Launch straight along mouse aim direction from the front of the magnet
+                    b2Vec2 launchPos = magnetPos + (kMagnetRadius + kBallRadius + 0.05f) * magnet.aimDir;
+                    heldBody->SetTransform(launchPos, heldBody->GetAngle());
+                    heldBody->SetLinearVelocity(magnet.vel);
+                    heldBody->ApplyLinearImpulseToCenter(kMagnetPuntImpulse * magnet.aimDir, true);
+                }
+                attachedJoints.clear();
+                return;
+            }
+            else {
+                // Repel only bodies hit by the ±15° mouse-aimed ray fan
+                std::vector<b2Body*> targets = findMagneticTargetsInCone(world, magnet);
+                for (b2Body* target : targets) {
+                    float dist = (target->GetPosition() - magnetPos).Length();
+                    float falloff = std::max(0.0f, 1.0f - (dist / kMagnetPullRadius));
+                    target->ApplyLinearImpulseToCenter((kMagnetPuntImpulse * falloff) * magnet.aimDir, true);
+                }
+                return;
+            }
+        }
+
+        // 2. DROP GENTLY (Neither pull nor repel active)
+        if (!input.pullActive) {
             for (b2Joint* joint : attachedJoints) {
                 world.DestroyJoint(joint);
             }
@@ -272,56 +440,39 @@ namespace {
             return;
         }
 
-        b2Vec2 magnetPos = magnet.body->GetPosition();
-
-        for (b2Body* ball : balls) {
-            // 2. Check UserData to see if this ball is magnetic
-            auto* data = reinterpret_cast<BodyData*>(ball->GetUserData().pointer);
-            if (!data || !data->isMagnetic) {
-                continue;
-            }
-
-            // Skip balls already welded to the magnet
+        // 3. PULL & HOLD (Only bodies hit by the ±15° mouse-aimed ray fan)
+        std::vector<b2Body*> targets = findMagneticTargetsInCone(world, magnet);
+        for (b2Body* target : targets) {
             bool alreadyAttached = false;
             for (b2Joint* joint : attachedJoints) {
-                if (joint->GetBodyB() == ball) {
+                if (joint->GetBodyB() == target) {
                     alreadyAttached = true;
                     break;
                 }
             }
             if (alreadyAttached) continue;
 
-            b2Vec2 ballPos = ball->GetPosition();
-            b2Vec2 toMagnet = magnetPos - ballPos;
+            b2Vec2 targetPos = target->GetPosition();
+            b2Vec2 toMagnet = magnetPos - targetPos;
             float dist = toMagnet.Length();
 
-            if (dist >= kMagnetPullRadius || dist <= 0.001f) {
-                continue;
-            }
-
-            // 3. Cast a ray from magnet to ball to make sure no wall blocks the pull
-            MagnetRayCastCallback rayCallback;
-            world.RayCast(&rayCallback, magnetPos, ballPos);
-            if (rayCallback.blocked) {
-                continue;
-            }
-
-            // 4. Snap onto magnet when close enough
             if (dist <= kMagnetSnapDist) {
                 b2WeldJointDef weldDef;
-                weldDef.Initialize(magnet.body, ball, ballPos);
+                weldDef.Initialize(magnet.body, target, targetPos);
                 weldDef.collideConnected = false;
                 attachedJoints.push_back(world.CreateJoint(&weldDef));
                 continue;
             }
 
-            // 5. Apply smooth radial pull force
-            toMagnet.Normalize();
-            float falloff = 1.0f - (dist / kMagnetPullRadius);
-            b2Vec2 force = (kMagnetPullStrength * falloff) * toMagnet;
-            ball->ApplyForceToCenter(force, true);
+            if (dist > 0.001f) {
+                toMagnet.Normalize();
+                float falloff = std::max(0.0f, 1.0f - (dist / kMagnetPullRadius));
+                target->ApplyForceToCenter((kMagnetPullStrength * falloff) * toMagnet, true);
+            }
         }
     }
+
+
 
     FishingLine createFishingLine(b2World& world, b2Vec2 anchorPos, b2Body* magnetBody) {
         FishingLine line;
@@ -389,6 +540,104 @@ namespace {
         return line;
     }
 
+    SandBed createSandBed(b2World& world) {
+        SandBed bed;
+
+        // 1. Create static U-shaped container (bottom floor + left/right walls)
+        b2BodyDef containerDef;
+        containerDef.position.Set(0.0f, 0.0f);
+        bed.container = world.CreateBody(&containerDef);
+
+        b2PolygonShape boxShape;
+        b2FixtureDef wallFix;
+        wallFix.shape = &boxShape;
+        wallFix.friction = 0.8f;
+        wallFix.filter.categoryBits = kCategoryGround;
+
+        // Bottom floor across full width (37.5m)
+        boxShape.SetAsBox(kWorldWidth * 0.5f, 0.5f, b2Vec2(kWorldWidth * 0.5f, kSandFloorY), 0.0f);
+        bed.container->CreateFixture(&wallFix);
+
+        // Left wall (keeps magnet, balls, and sand inside screen)
+        float wallHalfHeight = (kWindowHeight / kPixelsPerMeter) * 0.5f;
+        boxShape.SetAsBox(0.5f, wallHalfHeight, b2Vec2(-0.5f, wallHalfHeight), 0.0f);
+        bed.container->CreateFixture(&wallFix);
+
+        // Right wall
+        boxShape.SetAsBox(0.5f, wallHalfHeight, b2Vec2(kWorldWidth + 0.5f, wallHalfHeight), 0.0f);
+        bed.container->CreateFixture(&wallFix);
+
+        // 2. Spawn top surface sand nodes
+        b2CircleShape nodeShape;
+        nodeShape.m_radius = kSandNodeRadius;
+
+        b2FixtureDef nodeFix;
+        nodeFix.shape = &nodeShape;
+        nodeFix.density = 4.0f;
+        nodeFix.friction = 0.9f;
+        nodeFix.restitution = 0.0f; // Sand absorbs impact with zero bounce
+        nodeFix.filter.categoryBits = kCategorySand;
+
+        float spacing = kWorldWidth / static_cast<float>(kSandNodeCount - 1);
+
+        for (int i = 0; i < kSandNodeCount; ++i) {
+            float x = i * spacing;
+            // Set gravityScale = 0.0f so the sand bed stays flat and never droops on its own
+            b2BodyDef nodeDef = makeUnderwaterBodyDef(b2Vec2(x, kSandRestY), 0.0f);
+            nodeDef.linearDamping = kSandLinearDamping;
+            nodeDef.fixedRotation = true;
+
+            b2Body* node = world.CreateBody(&nodeDef);
+            node->CreateFixture(&nodeFix);
+            bed.nodes.push_back(node);
+
+            // Lock each node to vertical-only sliding with floor/ceiling limits
+            b2PrismaticJointDef prismDef;
+            prismDef.Initialize(bed.container, node, node->GetPosition(), b2Vec2(0.0f, 1.0f));
+            prismDef.enableLimit = true;
+            prismDef.lowerTranslation = -(kSandRestY - (kSandFloorY + 0.5f + kSandNodeRadius));
+            prismDef.upperTranslation = 1.5f;
+            world.CreateJoint(&prismDef);
+        }
+
+        // 3. Connect adjacent nodes with damped springs so impacts form smooth craters
+        for (int i = 0; i < kSandNodeCount - 1; ++i) {
+            b2DistanceJointDef springDef;
+            springDef.Initialize(bed.nodes[i], bed.nodes[i + 1],
+                bed.nodes[i]->GetPosition(), bed.nodes[i + 1]->GetPosition());
+            b2LinearStiffness(springDef.stiffness, springDef.damping,
+                kSandSpringHz, kSandDampingRatio,
+                bed.nodes[i], bed.nodes[i + 1]);
+            springDef.collideConnected = false;
+            world.CreateJoint(&springDef);
+        }
+
+        // Pin leftmost and rightmost nodes to the static walls so the edges stay anchored
+        auto pinEdgeNode = [&](b2Body* edgeNode) {
+            b2DistanceJointDef edgeSpring;
+            edgeSpring.Initialize(bed.container, edgeNode,
+                edgeNode->GetPosition(), edgeNode->GetPosition());
+            b2LinearStiffness(edgeSpring.stiffness, edgeSpring.damping,
+                kSandSpringHz, kSandDampingRatio,
+                bed.container, edgeNode);
+            world.CreateJoint(&edgeSpring);
+            };
+        pinEdgeNode(bed.nodes.front());
+        pinEdgeNode(bed.nodes.back());
+
+        return bed;
+    }
+
+    void updateSandBed(SandBed& bed) {
+        for (b2Body* node : bed.nodes) {
+            float displacement = kSandRestY - node->GetPosition().y;
+            // Only apply force if the node is displaced from rest height
+            if (std::abs(displacement) > 0.001f) {
+                float restoreForceY = displacement * kSandRestoreStiffness;
+                node->ApplyForceToCenter(b2Vec2(0.0f, restoreForceY), true);
+            }
+        }
+    }
 
 }  // namespace
 
@@ -406,8 +655,7 @@ int main() {
         float groundHalfWidth = pixelsToMetersX(kWindowWidth * 0.5f); // Full window width
         float groundY = pixelsToMetersY(kWindowHeight - 32.0f);       // 32px above the bottom edge
 
-        b2Body* ground =
-            createStaticBox(world, kGroundX, kGroundY, kGroundHalfWidth, kGroundHalfHeight);
+        SandBed sandBed = createSandBed(world);
 
         std::deque<BodyData> bodyDataList;
         std::vector<b2Body*> balls;
@@ -441,7 +689,8 @@ int main() {
             accumulator += frameTime;
             while (accumulator >= kStepDt) {
                 updateMagnetVerlet(magnet, input, kStepDt);
-                applyMagnetField(world, magnet, balls, attachedJoints, input.magnetActive);
+                applyMagnetField(world, magnet, attachedJoints, input);
+                updateSandBed(sandBed);
                 world.Step(kStepDt, kVelocityIterations, kPositionIterations);
                 magnet.pos = magnet.body->GetPosition();
                 magnet.vel = magnet.body->GetLinearVelocity();
@@ -450,7 +699,7 @@ int main() {
 
             glClear(GL_COLOR_BUFFER_BIT);
 
-            drawBoxBody(ground, kGroundHalfWidth, kGroundHalfHeight, 0.35f, 0.35f, 0.4f);
+            drawSandBed(sandBed);
 
             for (const b2Body* ball : balls) {
                 auto* data = reinterpret_cast<BodyData*>(ball->GetUserData().pointer);
@@ -463,9 +712,12 @@ int main() {
             }
 
             // In your render section:
-            if (input.magnetActive) {
-                drawCircle(magnet.body->GetPosition(), kMagnetPullRadius, 0.2f, 0.5f, 0.8f);
-            }
+            drawMagnetCone(magnet, input.pullActive);
+            drawCircle(magnet.body->GetPosition(), kMagnetRadius, 0.3f, 0.7f, 1.0f);
+
+            // Draw aim indicator line pointing toward the mouse cursor
+            b2Vec2 magPos = magnet.body->GetPosition();
+
             drawFishingLine(fishingLine, magnet.body);
             drawCircle(magnet.body->GetPosition(), kMagnetRadius, 0.3f, 0.7f, 1.0f);
 

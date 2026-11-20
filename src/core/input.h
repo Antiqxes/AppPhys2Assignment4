@@ -8,10 +8,11 @@ namespace gfx {
 
     struct InputState {
         b2Vec2 move{ 0.0f, 0.0f };
-        bool magnetActive = false;
+        b2Vec2 mousePixelPos{ 0.0f, 0.0f };
+        bool pullActive = false;
+        bool repelTriggered = false;
     };
 
     InputState processInput(Window& window);
 
 }  // namespace gfx
-
