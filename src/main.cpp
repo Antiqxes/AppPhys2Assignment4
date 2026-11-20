@@ -50,6 +50,18 @@ namespace {
     constexpr float kBallRadius = 0.2f;
     constexpr float kBallDensity = 3.0f;
 
+    constexpr float kMagnetRadius = 0.35f;
+    constexpr float kMagnetAccel = 15.0f;     // Acceleration in m/s^2
+    constexpr float kMagnetDrag = 4.0f;       // Water drag deceleration when keys are released
+    constexpr float kMagnetMaxSpeed = 8.0f;   // Terminal velocity in m/s
+
+    struct Magnet {
+        b2Body* body = nullptr;
+        b2Vec2 pos{ 0.0f, 0.0f };
+        b2Vec2 vel{ 0.0f, 0.0f };
+        b2Vec2 acc{ 0.0f, 0.0f };
+    };
+
     constexpr float kWorldWidth = kWindowWidth / kPixelsPerMeter;
 
     float metersToPixelsX(float xMeters) {
@@ -115,13 +127,20 @@ namespace {
         }
     }
 
+    b2BodyDef makeUnderwaterBodyDef(b2Vec2 position, float gravityScale = 1.0f) {
+        b2BodyDef def;
+        def.type = b2_dynamicBody;
+        def.position = position;
+        def.linearDamping = kWaterLinearDamping;
+        def.angularDamping = kWaterAngularDamping;
+        def.gravityScale = gravityScale;
+        return def;
+    }
+
     b2Body* createBall(b2World& world, b2Vec2 position) {
-        b2BodyDef bodyDef;
-        bodyDef.type = b2_dynamicBody;
-        bodyDef.position = position;
+        b2BodyDef bodyDef = makeUnderwaterBodyDef(position);
         bodyDef.bullet = true;
-        bodyDef.linearDamping = kWaterLinearDamping;   // Water resistance
-        bodyDef.angularDamping = kWaterAngularDamping; // Rotational drag
+
         b2Body* body = world.CreateBody(&bodyDef);
 
         b2CircleShape shape;
@@ -137,6 +156,52 @@ namespace {
 
         return body;
     }
+
+    Magnet createMagnet(b2World& world, b2Vec2 startPos) {
+        b2BodyDef bodyDef;
+        bodyDef.type = b2_kinematicBody;
+        bodyDef.position = startPos;
+        b2Body* body = world.CreateBody(&bodyDef);
+
+        b2CircleShape shape;
+        shape.m_radius = kMagnetRadius;
+
+        b2FixtureDef fixtureDef;
+        fixtureDef.shape = &shape;
+        fixtureDef.friction = 0.5f;
+        fixtureDef.filter.categoryBits = kCategoryBall;
+        body->CreateFixture(&fixtureDef);
+
+        Magnet magnet;
+        magnet.body = body;
+        magnet.pos = startPos;
+        return magnet;
+    }
+
+    void updateMagnetVerlet(Magnet& magnet, const gfx::InputState& input, float dt) {
+        // 1. Velocity Verlet Step 1: Half-step velocity & full-step position
+        b2Vec2 halfVel = magnet.vel + 0.5f * dt * magnet.acc;
+        magnet.pos += dt * halfVel;
+
+        // 2. Compute new acceleration (WASD thrust minus water drag)
+        b2Vec2 thrust = kMagnetAccel * input.move;
+        b2Vec2 drag = -kMagnetDrag * halfVel;
+        b2Vec2 newAcc = thrust + drag;
+
+        // 3. Velocity Verlet Step 2: Complete velocity update & clamp to max speed
+        magnet.vel = halfVel + 0.5f * dt * newAcc;
+        magnet.acc = newAcc;
+
+        float speed = magnet.vel.Length();
+        if (speed > kMagnetMaxSpeed) {
+            magnet.vel *= (kMagnetMaxSpeed / speed);
+        }
+
+        // 4. Sync velocity with Box2D body
+        magnet.body->SetLinearVelocity(magnet.vel);
+    }
+
+
 
 }  // namespace
 
@@ -161,13 +226,15 @@ int main() {
         // Spawn a single test ball near the top center of the screen (25m wide x 18.75m tall)
         balls.push_back(createBall(world, b2Vec2(kWorldWidth * 0.5f, 15.0f)));
 
+        Magnet magnet = createMagnet(world, b2Vec2(kGroundX, 14.0f));
+
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
         double previousTime = glfwGetTime();
         float accumulator = 0.0f;
 
         while (!window.shouldClose()) {
-            gfx::processInput(window);
+            gfx::InputState input = gfx::processInput(window);
 
             double now = glfwGetTime();
             float frameTime = std::min(static_cast<float>(now - previousTime), kMaxFrameTime);
@@ -175,10 +242,11 @@ int main() {
 
             accumulator += frameTime;
             while (accumulator >= kStepDt) {
+                updateMagnetVerlet(magnet, input, kStepDt);
                 world.Step(kStepDt, kVelocityIterations, kPositionIterations);
+                magnet.pos = magnet.body->GetPosition();
                 accumulator -= kStepDt;
             }
-
 
             glClear(GL_COLOR_BUFFER_BIT);
 
@@ -187,6 +255,7 @@ int main() {
             for (const b2Body* ball : balls) {
                 drawCircle(ball->GetPosition(), kBallRadius, 1.0f, 0.4f, 0.4f);
             }
+            drawCircle(magnet.body->GetPosition(), kMagnetRadius, 0.3f, 0.7f, 1.0f);
 
             window.swapBuffers();
             window.pollEvents();

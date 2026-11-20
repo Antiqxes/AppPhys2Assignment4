@@ -1,0 +1,29 @@
+{
+    "Version": "1.2",
+    "Data": {
+        "Source": "d:\\iacademy\\emc 21\\appphys2\\vsprojects\\assignment4\\src\\core\\input.h",
+        "ProvidedModule": "",
+        "Includes": [
+            "d:\\iacademy\\emc 21\\appphys2\\vsprojects\\assignment4\\include\\box2d\\b2_math.h",
+            "c:\\program files (x86)\\windows kits\\10\\include\\10.0.26100.0\\ucrt\\math.h",
+            "c:\\program files (x86)\\windows kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt_math.h",
+            "c:\\program files (x86)\\windows kits\\10\\include\\10.0.26100.0\\ucrt\\corecrt.h",
+            "d:\\program files\\vsstuff\\vc\\tools\\msvc\\14.51.36231\\include\\vcruntime.h",
+            "d:\\program files\\vsstuff\\vc\\tools\\msvc\\14.51.36231\\include\\sal.h",
+            "d:\\program files\\vsstuff\\vc\\tools\\msvc\\14.51.36231\\include\\concurrencysal.h",
+            "d:\\program files\\vsstuff\\vc\\tools\\msvc\\14.51.36231\\include\\vadefs.h",
+            "d:\\iacademy\\emc 21\\appphys2\\vsprojects\\assignment4\\include\\box2d\\b2_api.h",
+            "d:\\iacademy\\emc 21\\appphys2\\vsprojects\\assignment4\\include\\box2d\\b2_settings.h",
+            "d:\\iacademy\\emc 21\\appphys2\\vsprojects\\assignment4\\include\\box2d\\b2_types.h",
+            "d:\\program files\\vsstuff\\vc\\tools\\msvc\\14.51.36231\\include\\stdarg.h",
+            "d:\\program files\\vsstuff\\vc\\tools\\msvc\\14.51.36231\\include\\stdint.h",
+            "d:\\iacademy\\emc 21\\appphys2\\vsprojects\\assignment4\\include\\box2d\\b2_common.h",
+            "d:\\iacademy\\emc 21\\appphys2\\vsprojects\\assignment4\\include\\box2d\\b2_settings.h",
+            "c:\\program files (x86)\\windows kits\\10\\include\\10.0.26100.0\\ucrt\\stddef.h",
+            "c:\\program files (x86)\\windows kits\\10\\include\\10.0.26100.0\\ucrt\\assert.h",
+            "c:\\program files (x86)\\windows kits\\10\\include\\10.0.26100.0\\ucrt\\float.h"
+        ],
+        "ImportedModules": [],
+        "ImportedHeaderUnits": []
+    }
+}
